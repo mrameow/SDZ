@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="ms">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#f3f0ff">
+  <title>Kuiz SDZ</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⭐</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="bg" aria-hidden="true">
+    <span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span><span class="blob b4"></span>
+  </div>
+
+  <!-- Bar atas -->
+  <div class="topbar">
+    <button id="btn-mute" class="icon-btn" title="Bunyi" aria-label="Hidupkan / matikan bunyi">🔊</button>
+    <button id="btn-full" class="icon-btn host-only" title="Skrin penuh" aria-label="Skrin penuh">⛶</button>
+    <button id="btn-admin" class="admin-btn" title="Mod admin / guru">🧑‍🏫 Admin</button>
+  </div>
+
+  <main id="app">
+    <!-- ================= PEMAIN ================= -->
+    <section class="screen active" id="p-join">
+      <div class="logo pop-in">
+        <span class="logo-star">⭐</span>
+        <h1>Kuiz <b>SDZ</b></h1>
+        <p class="tagline">Jom main &amp; belajar bersama!</p>
+      </div>
+      <form class="card join-card pop-in d1" id="form-pin" autocomplete="off">
+        <label for="in-pin" class="lbl">Masukkan kod permainan</label>
+        <input id="in-pin" class="big-input pin-input" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="• • • • • •" autofocus>
+        <button class="btn btn-primary btn-xl" type="submit">Masuk ➜</button>
+        <p class="err" id="pin-err" role="alert"></p>
+      </form>
+    </section>
+
+    <section class="screen" id="p-name">
+      <form class="card join-card pop-in" id="form-name" autocomplete="off">
+        <p class="lbl">Pilih watak kamu</p>
+        <div class="avatar-pick">
+          <button type="button" class="arrow" id="av-prev" aria-label="Watak sebelum">‹</button>
+          <div class="avatar big" id="av-cur">🐱</div>
+          <button type="button" class="arrow" id="av-next" aria-label="Watak seterusnya">›</button>
+        </div>
+        <label for="in-name" class="lbl">Nama kamu</label>
+        <input id="in-name" class="big-input" maxlength="14" placeholder="Nama panggilan">
+        <button class="btn btn-primary btn-xl" type="submit">Jom! 🚀</button>
+        <p class="err" id="name-err" role="alert"></p>
+      </form>
+    </section>
+
+    <section class="screen" id="p-wait">
+      <div class="center-stack">
+        <div class="avatar huge bounce" id="pw-avatar">🐱</div>
+        <h2 id="pw-name">Nama</h2>
+        <div class="pill ok">✅ Kamu sudah masuk!</div>
+        <p class="muted big-muted" id="pw-msg">Tengok skrin di hadapan. Permainan akan bermula sebentar lagi…</p>
+        <div class="dots"><i></i><i></i><i></i></div>
+      </div>
+    </section>
+
+    <section class="screen" id="p-ready">
+      <div class="center-stack">
+        <p class="pill" id="pr-num">Soalan 1</p>
+        <h2 class="ready-title">Bersedia!</h2>
+        <div class="ring-count" id="pr-count">3</div>
+      </div>
+    </section>
+
+    <section class="screen" id="p-answer">
+      <div class="p-answer-wrap">
+        <div class="p-q-head">
+          <span class="pill small" id="pa-num">1 / 12</span>
+          <span class="p-timer" id="pa-timer">20</span>
+        </div>
+        <div class="timebar"><i id="pa-bar"></i></div>
+        <p class="p-question" id="pa-q">Soalan</p>
+        <div class="answers" id="pa-answers"></div>
+      </div>
+    </section>
+
+    <section class="screen" id="p-sent">
+      <div class="center-stack">
+        <div class="sent-badge" id="ps-badge">★</div>
+        <h2>Jawapan dihantar!</h2>
+        <p class="muted big-muted">Tunggu kawan-kawan lain… 🤞</p>
+        <div class="dots"><i></i><i></i><i></i></div>
+      </div>
+    </section>
+
+    <section class="screen" id="p-result">
+      <div class="center-stack result-stack">
+        <div class="result-icon" id="pres-icon">✔</div>
+        <h2 class="result-title" id="pres-title">Betul!</h2>
+        <div class="points-pill" id="pres-points">+ 850</div>
+        <div class="streak" id="pres-streak"></div>
+        <p class="result-note" id="pres-note"></p>
+        <div class="score-foot"><span id="pres-name">Nama</span><b id="pres-score">0</b></div>
+      </div>
+    </section>
+
+    <section class="screen" id="p-end">
+      <div class="center-stack">
+        <div class="medal" id="pe-medal">🏆</div>
+        <h2 id="pe-title">Tahniah!</h2>
+        <p class="pe-rank" id="pe-rank">Tempat ke-1</p>
+        <div class="points-pill neutral" id="pe-score">0 mata</div>
+        <p class="muted big-muted" id="pe-msg">Terima kasih kerana bermain!</p>
+        <button class="btn btn-ghost" id="pe-again">Main semula</button>
+      </div>
+    </section>
+
+    <!-- ================= HOST / ADMIN ================= -->
+    <section class="screen" id="h-setup">
+      <div class="setup-wrap">
+        <h2 class="pop-in">Pilih set soalan</h2>
+        <div class="set-grid" id="set-grid"></div>
+        <div class="card settings pop-in d2">
+          <div class="setting">
+            <span>⏱️ Masa setiap soalan</span>
+            <div class="seg" id="seg-time">
+              <button type="button" data-v="10">10s</button>
+              <button type="button" data-v="20" class="on">20s</button>
+              <button type="button" data-v="30">30s</button>
+              <button type="button" data-v="45">45s</button>
+            </div>
+          </div>
+          <label class="setting toggle">
+            <span>🔀 Susun soalan secara rawak</span>
+            <input type="checkbox" id="opt-shuffle"><i></i>
+          </label>
+          <label class="setting toggle">
+            <span>💡 Tunjuk penerangan jawapan</span>
+            <input type="checkbox" id="opt-explain" checked><i></i>
+          </label>
+        </div>
+        <div class="row-btns">
+          <button class="btn btn-ghost" id="btn-setup-back">← Kembali</button>
+          <button class="btn btn-primary btn-xl" id="btn-create">Cipta Bilik 🎉</button>
+        </div>
+        <p class="err" id="setup-err" role="alert"></p>
+      </div>
+    </section>
+
+    <section class="screen" id="h-lobby">
+      <div class="lobby-wrap">
+        <div class="lobby-head card">
+          <div class="join-info">
+            <p class="muted">Buka laman ini &amp; masukkan kod:</p>
+            <p class="join-url" id="hl-url">…</p>
+            <div class="pin-display" id="hl-pin">------</div>
+          </div>
+          <div class="qr" id="hl-qr" title="Imbas untuk masuk"></div>
+        </div>
+        <div class="lobby-bar">
+          <div class="count-pill"><b id="hl-count">0</b> pemain</div>
+          <p class="muted lobby-set" id="hl-set"></p>
+          <button class="btn btn-primary btn-xl" id="btn-start" disabled>Mula ▶</button>
+        </div>
+        <div class="players" id="hl-players">
+          <p class="muted waiting-text" id="hl-empty">Menunggu pemain masuk…</p>
+        </div>
+        <p class="muted hint">Klik nama pemain untuk mengeluarkannya.</p>
+      </div>
+    </section>
+
+    <section class="screen" id="h-intro">
+      <div class="center-stack">
+        <p class="pill big" id="hi-num">Soalan 1 / 12</p>
+        <h2 class="intro-tag" id="hi-tag">Tajuk</h2>
+        <div class="intro-bar"><i></i></div>
+      </div>
+    </section>
+
+    <section class="screen" id="h-question">
+      <div class="hq-wrap">
+        <div class="hq-top">
+          <span class="pill" id="hq-num">1 / 12</span>
+          <span class="hq-tag" id="hq-tag">Tajuk</span>
+          <button class="btn btn-ghost btn-sm" id="btn-skip">Tamatkan ⏭</button>
+        </div>
+        <div class="card hq-question" id="hq-q">Soalan</div>
+        <div class="hq-mid">
+          <div class="timer-ring" id="hq-timer">
+            <svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" class="track"/><circle cx="50" cy="50" r="44" class="prog" id="hq-ring"/></svg>
+            <span id="hq-time">20</span>
+          </div>
+          <div class="ans-count"><b id="hq-answered">0</b><span>jawapan</span></div>
+        </div>
+        <div class="h-options" id="hq-options"></div>
+        <div class="reveal-row">
+          <div class="explain" id="hq-explain"></div>
+          <button class="btn btn-primary btn-xl" id="btn-reveal-next">Seterusnya ➜</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" id="h-board">
+      <div class="board-wrap">
+        <h2 class="pop-in">🏅 Papan Markah</h2>
+        <ol class="board" id="hb-list"></ol>
+        <div class="row-btns end">
+          <button class="btn btn-primary btn-xl" id="btn-board-next">Seterusnya ➜</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" id="h-podium">
+      <div class="podium-wrap">
+        <h2 class="podium-title" id="hp-title">Dan pemenangnya ialah…</h2>
+        <div class="podium">
+          <div class="pod p2" id="pod2"><div class="pod-who"><div class="avatar"></div><b></b><span></span></div><div class="pillar">2</div></div>
+          <div class="pod p1" id="pod1"><div class="pod-who"><div class="crown">👑</div><div class="avatar"></div><b></b><span></span></div><div class="pillar">1</div></div>
+          <div class="pod p3" id="pod3"><div class="pod-who"><div class="avatar"></div><b></b><span></span></div><div class="pillar">3</div></div>
+        </div>
+        <div class="row-btns center podium-btns" id="hp-btns">
+          <button class="btn btn-ghost" id="btn-csv">⬇ Muat turun keputusan</button>
+          <button class="btn btn-ghost" id="btn-full-list">📋 Senarai penuh</button>
+          <button class="btn btn-primary" id="btn-new">🔁 Main lagi</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Dialog senarai penuh -->
+  <dialog id="dlg-list" class="card">
+    <h3>Keputusan penuh</h3>
+    <ol class="board compact" id="dlg-list-ol"></ol>
+    <form method="dialog"><button class="btn btn-primary">Tutup</button></form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status"></div>
+  <div class="overlay" id="overlay"><div class="spinner"></div><p id="overlay-msg">Menyambung…</p></div>
+
+  <script src="lib/peerjs.min.js"></script>
+  <script src="lib/qrcode.js"></script>
+  <script src="js/questions.js"></script>
+  <script src="js/sfx.js"></script>
+  <script src="js/fx.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
