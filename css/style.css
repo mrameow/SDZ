@@ -216,6 +216,17 @@ body.res-ok .bg, body.res-bad .bg { opacity: .3; }
 .toggle input:checked + i { background: var(--primary); }
 .toggle input:checked + i::after { transform: translateX(24px); }
 
+.sel { font-family: inherit; font-size: 15px; font-weight: 600; color: var(--ink); background: #f1effb; border: 0; border-radius: 12px; padding: 10px 12px; max-width: 100%; min-width: 0; flex: 1 1 220px; }
+.sel:disabled { opacity: .5; }
+.resume-card { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; border: 3px solid #ffd43b; background: #fff9db; padding: 16px 20px; }
+.resume-card[hidden] { display: none; }
+.resume-info { display: flex; flex-direction: column; gap: 4px; }
+.resume-info b { font-size: 19px; }
+.resume-info span { color: var(--muted); font-weight: 500; }
+.resume-btns { display: flex; gap: 10px; }
+.admin-form { display: flex; flex-direction: column; gap: 12px; }
+#dlg-admin { max-width: 360px; }
+
 /* ---------- host: lobi ---------- */
 .lobby-wrap { width: 100%; max-width: 1100px; height: 100%; display: flex; flex-direction: column; gap: 16px; }
 .lobby-head { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; }

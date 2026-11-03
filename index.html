@@ -118,6 +118,16 @@
     <!-- ================= HOST / ADMIN ================= -->
     <section class="screen" id="h-setup">
       <div class="setup-wrap">
+        <div class="card resume-card pop-in" id="resume-card" hidden>
+          <div class="resume-info">
+            <b>⏸️ Permainan belum selesai</b>
+            <span id="resume-text">…</span>
+          </div>
+          <div class="resume-btns">
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-resume-discard">Buang</button>
+            <button type="button" class="btn btn-primary" id="btn-resume">Sambung semula ▶</button>
+          </div>
+        </div>
         <h2 class="pop-in">Pilih set soalan</h2>
         <div class="set-grid" id="set-grid"></div>
         <div class="card settings pop-in d2">
@@ -129,6 +139,10 @@
               <button type="button" data-v="30">30s</button>
               <button type="button" data-v="45">45s</button>
             </div>
+          </div>
+          <div class="setting">
+            <span>🎯 Mula dari soalan</span>
+            <select id="sel-start" class="sel"></select>
           </div>
           <label class="setting toggle">
             <span>🔀 Susun soalan secara rawak</span>
@@ -234,8 +248,21 @@
     <form method="dialog"><button class="btn btn-primary">Tutup</button></form>
   </dialog>
 
+  <!-- Dialog kata laluan admin -->
+  <dialog id="dlg-admin" class="card">
+    <form id="form-admin" class="admin-form" autocomplete="off">
+      <h3>🔒 Kata laluan admin</h3>
+      <input id="in-admin" class="big-input pin-input" type="password" inputmode="numeric" maxlength="8" placeholder="••••">
+      <p class="err" id="admin-err" role="alert"></p>
+      <div class="row-btns">
+        <button type="button" class="btn btn-ghost" id="btn-admin-cancel">Batal</button>
+        <button type="submit" class="btn btn-primary">Masuk</button>
+      </div>
+    </form>
+  </dialog>
+
   <div class="toast" id="toast" role="status"></div>
-  <div class="overlay" id="overlay"><div class="spinner"></div><p id="overlay-msg">Menyambung…</p></div>
+  <div class="overlay" id="overlay"><div class="spinner"></div><p id="overlay-msg">Menyambung…</p><button class="btn btn-ghost btn-sm" id="overlay-cancel" hidden>Batal</button></div>
 
   <script src="lib/peerjs.min.js"></script>
   <script src="lib/qrcode.js"></script>

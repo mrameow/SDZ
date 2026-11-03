@@ -46,8 +46,9 @@
     const t = $("#toast"); t.textContent = msg; t.classList.add("show");
     clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), ms);
   }
-  function overlay(msg) {
-    const o = $("#overlay");
+  function overlay(msg, onCancel) {
+    const o = $("#overlay"), c = $("#overlay-cancel");
+    c.hidden = !onCancel; c.onclick = onCancel || null;
     if (msg) { $("#overlay-msg").textContent = msg; o.classList.add("show"); } else o.classList.remove("show");
   }
   function shake(node) { node.classList.remove("shake"); void node.offsetWidth; node.classList.add("shake"); }
@@ -76,7 +77,28 @@
     if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
     else document.exitFullscreen?.();
   };
-  $("#btn-admin").onclick = () => { SFX.click(); Host.enter(); };
+  // Kata laluan admin (semakan di pelayar sahaja: menghalang murid, bukan keselamatan sebenar)
+  const ADMIN_PASS = "0000";
+  const dlgAdmin = $("#dlg-admin");
+  $("#btn-admin").onclick = () => {
+    SFX.click();
+    if (store.get("sdz-admin", false)) return Host.enter();
+    $("#in-admin").value = ""; $("#admin-err").textContent = "";
+    dlgAdmin.showModal();
+    setTimeout(() => $("#in-admin").focus(), 50);
+  };
+  $("#btn-admin-cancel").onclick = () => { SFX.click(); dlgAdmin.close(); };
+  $("#form-admin").onsubmit = e => {
+    e.preventDefault();
+    if ($("#in-admin").value === ADMIN_PASS) {
+      store.set("sdz-admin", true);
+      dlgAdmin.close(); SFX.correct(); Host.enter();
+    } else {
+      $("#admin-err").textContent = "Kata laluan salah.";
+      $("#in-admin").value = "";
+      shake($("#form-admin")); SFX.wrong();
+    }
+  };
 
   // ======================================================================
   //                                PEMAIN
@@ -124,6 +146,7 @@
       P.peer = P.conn = null;
     }
     function leave(msg) {
+      clearTimeout(P.retryT);
       cleanup();
       store.del("sdz-player");
       P.joined = false; P.ended = false; P.cid = null;
@@ -139,14 +162,14 @@
       cleanup();
       P.connecting = true;
       P.pin = pin;
-      overlay(rejoin ? "Menyambung semula…" : "Mencari permainan…");
+      if (!rejoin || P.retry === 0) overlay(rejoin ? "Menyambung semula…" : "Mencari permainan…");
       const peer = new Peer(peerOptions());
       P.peer = peer;
       let opened = false;
       const fail = (msg) => {
         if (P.peer !== peer) return;
         P.connecting = false;
-        if (rejoin && P.joined && !P.ended && P.retry < 5) { scheduleRetry(); return; }
+        if (rejoin && P.joined && !P.ended && P.retry < 40) { scheduleRetry(); return; }
         overlay(null);
         cleanup();
         if (!P.joined) { $("#pin-err").textContent = msg; shake($("#form-pin")); SFX.wrong(); show("p-join"); }
@@ -158,6 +181,7 @@
         P.conn = conn;
         conn.on("open", () => {
           opened = true; clearTimeout(to);
+          P.lastSeen = Date.now();
           P.connecting = false; P.retry = 0;
           overlay(null);
           if (P.cid && P.name) sendJoin();
@@ -175,8 +199,10 @@
     }
     function scheduleRetry() {
       P.retry++;
-      overlay(`Sambungan terputus. Menyambung semula… (${P.retry})`);
-      setTimeout(() => connect(P.pin, true), 1500 + P.retry * 700);
+      overlay(P.retry < 3 ? `Sambungan terputus. Menyambung semula… (${P.retry})` : `Menunggu skrin guru dibuka semula… (${P.retry})`,
+        () => { SFX.click(); leave("Masukkan kod permainan untuk masuk semula."); });
+      clearTimeout(P.retryT);
+      P.retryT = setTimeout(() => connect(P.pin, true), Math.min(1500 + P.retry * 700, 5000));
     }
     function onClose(conn) {
       if (conn !== P.conn) return;
@@ -192,6 +218,7 @@
     }
 
     function onData(m) {
+      P.lastSeen = Date.now();
       if (P.ended && (m.t === "wait" || m.t === "ready" || m.t === "question")) {
         // guru memulakan permainan baharu dalam bilik yang sama
         P.ended = false;
@@ -318,6 +345,18 @@
       else { SFX.reveal(); FX.rain(60); }
     }
 
+    // degupan: hos menghantar "ping" setiap 2s; jika senyap terlalu lama, anggap terputus
+    setInterval(() => {
+      if (!P.joined || P.ended || P.connecting || !P.conn) return;
+      if (P.conn.open) send({ t: "ping" });
+      if (Date.now() - (P.lastSeen || 0) > 7000) {
+        const c = P.conn; P.conn = null;
+        try { c.close(); } catch {}
+        clearInterval(P.timer);
+        scheduleRetry();
+      }
+    }, 2000);
+
     // sambung semula apabila tab kembali aktif (cth: telefon tidur)
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible" && P.joined && !P.ended && !P.connecting && !(P.conn && P.conn.open)) connect(P.pin, true);
@@ -344,7 +383,54 @@
     const H = {
       peer: null, pin: null, setIdx: 0, time: 20, shuffle: false, explain: true,
       questions: [], players: new Map(), phase: "setup", qIdx: -1, qStart: 0, qEnd: 0,
-      answers: new Map(), timer: null, introT: null, lastResults: new Map()
+      answers: new Map(), timer: null, introT: null, lastResults: new Map(),
+      order: [], startIdx: 0, resumed: false, played: 0
+    };
+
+    // --- simpan kemajuan supaya guru boleh sambung semula jika tab tertutup
+    const SAVE_KEY = "sdz-host";
+    function save(next) {
+      store.set(SAVE_KEY, {
+        pin: H.pin, setIdx: H.setIdx, time: H.time, explain: H.explain, order: H.order, next, played: H.played, at: Date.now(),
+        players: [...H.players.values()].map(p => ({ cid: p.cid, name: p.name, avatar: p.avatar, score: p.score, streak: p.streak, correct: p.correct }))
+      }, localStorage);
+    }
+    function loadSaved() {
+      const sv = store.get(SAVE_KEY, null, localStorage);
+      if (!sv || !QUIZ_SETS[sv.setIdx] || !Array.isArray(sv.order) || Date.now() - sv.at > 12 * 3600e3) return null;
+      if (sv.next >= sv.order.length) return null;
+      return sv;
+    }
+    const clearSaved = () => store.del(SAVE_KEY, localStorage);
+
+    function refreshSetup() {
+      const set = QUIZ_SETS[H.setIdx];
+      const sel = $("#sel-start");
+      sel.innerHTML = "";
+      set.questions.forEach((q, i) => { const o = el("option", null, `${i + 1}. ${q.tag}`); o.value = i; sel.append(o); });
+      sel.disabled = $("#opt-shuffle").checked;
+      const sv = loadSaved();
+      $("#resume-card").hidden = !sv;
+      if (sv) {
+        const ss = QUIZ_SETS[sv.setIdx];
+        const ago = Math.max(1, Math.round((Date.now() - sv.at) / 60000));
+        $("#resume-text").textContent = `${ss.emoji} ${ss.title} • sambung dari soalan ${sv.next + 1} / ${sv.order.length} • ${sv.players.length} pemain • ${ago} minit lalu`;
+      }
+    }
+    $("#opt-shuffle").addEventListener("change", () => { const sel = $("#sel-start"); sel.disabled = $("#opt-shuffle").checked; if (sel.disabled) sel.value = 0; });
+    $("#btn-resume-discard").onclick = () => { SFX.click(); if (confirm("Buang permainan yang belum selesai?")) { clearSaved(); refreshSetup(); } };
+    $("#btn-resume").onclick = () => {
+      SFX.click();
+      const sv = loadSaved(); if (!sv) return refreshSetup();
+      H.setIdx = sv.setIdx; H.time = sv.time; H.explain = sv.explain; H.order = sv.order;
+      H.startIdx = sv.next; H.played = sv.played || 0; H.resumed = true;
+      for (const sp of sv.players) {
+        const ex = H.players.get(sp.cid);
+        if (ex) Object.assign(ex, { score: sp.score, streak: sp.streak, correct: sp.correct });
+        else H.players.set(sp.cid, { ...sp, last: 0, connected: false, conn: null });
+      }
+      if (H.peer && !H.peer.destroyed && H.peer.open) { H.phase = "lobby"; showLobby(); broadcast({ t: "wait", msg: "Permainan akan disambung semula… 🎲" }); }
+      else createRoom(0, sv.pin);
     };
 
     // --- skrin tetapan
@@ -355,7 +441,7 @@
       b.style.animationDelay = (i * 0.08) + "s";
       b.append(el("span", "emo", s.emoji));
       const d = el("div"); d.append(el("b", null, s.title), el("span", null, s.subtitle)); b.append(d);
-      b.onclick = () => { SFX.pop(); H.setIdx = i; grid.querySelectorAll(".set-card").forEach((c, j) => c.classList.toggle("on", j === i)); };
+      b.onclick = () => { SFX.pop(); H.setIdx = i; grid.querySelectorAll(".set-card").forEach((c, j) => c.classList.toggle("on", j === i)); refreshSetup(); };
       grid.append(b);
     });
     $("#seg-time").addEventListener("click", e => {
@@ -372,6 +458,11 @@
       SFX.click();
       H.shuffle = $("#opt-shuffle").checked;
       H.explain = $("#opt-explain").checked;
+      const n = QUIZ_SETS[H.setIdx].questions.length;
+      H.order = [...Array(n).keys()];
+      if (H.shuffle) for (let i = n - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [H.order[i], H.order[j]] = [H.order[j], H.order[i]]; }
+      H.startIdx = H.shuffle ? 0 : Number($("#sel-start").value) || 0;
+      H.played = 0; H.resumed = false;
       if (H.peer && !H.peer.destroyed && H.peer.open) { H.phase = "lobby"; showLobby(); broadcast({ t: "wait", msg: "Guru sedang menyediakan permainan baharu… 🎲" }); }
       else createRoom();
     };
@@ -383,6 +474,7 @@
       SFX.click();
       H.phase = "setup";
       SFX.stopMusic();
+      refreshSetup();
       show("h-setup");
       broadcast({ t: "wait", msg: "Guru sedang menyediakan permainan baharu… 🎲" });
       // pemain yang sudah tamat perlu masuk semula; yang masih bersambung kekal
@@ -411,6 +503,7 @@
       Player.stop();
       document.body.classList.add("is-host");
       H.phase = "setup";
+      refreshSetup();
       show("h-setup");
     }
     function exit() {
@@ -422,10 +515,11 @@
     }
 
     // --- bilik
-    function createRoom(attempt = 0) {
+    function createRoom(attempt = 0, preferPin = null) {
       $("#setup-err").textContent = "";
       overlay("Mencipta bilik…");
-      const pin = String(Math.floor(100000 + Math.random() * 900000));
+      // cuba guna semula kod lama supaya pemain boleh menyambung semula secara automatik
+      const pin = preferPin && attempt === 0 ? preferPin : String(Math.floor(100000 + Math.random() * 900000));
       const peer = new Peer(PREFIX + pin, peerOptions());
       let ok = false;
       const to = setTimeout(() => { if (!ok) { try { peer.destroy(); } catch {} overlay(null); $("#setup-err").textContent = "Tidak dapat menyambung ke pelayan. Semak internet dan cuba lagi."; } }, 15000);
@@ -451,21 +545,25 @@
 
     function showLobby() {
       const set = QUIZ_SETS[H.setIdx];
-      H.questions = set.questions.map(q => q);
-      if (H.shuffle) for (let i = H.questions.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [H.questions[i], H.questions[j]] = [H.questions[j], H.questions[i]]; }
+      if (!H.order.length || H.order.some(i => !set.questions[i])) H.order = [...set.questions.keys()];
+      H.questions = H.order.map(i => set.questions[i]);
       const base = location.origin + location.pathname;
       const url = base + "?pin=" + H.pin;
       $("#hl-url").textContent = base.replace(/^https?:\/\//, "").replace(/\/index\.html$/, "/");
       $("#hl-pin").textContent = H.pin.slice(0, 3) + " " + H.pin.slice(3);
       $("#hl-set").textContent = `${set.emoji} ${set.title} • ${H.questions.length} soalan • ${H.time}s`;
+      $("#btn-start").textContent = H.startIdx > 0 ? `Mula dari soalan ${H.startIdx + 1} ▶` : "Mula ▶";
       const qrBox = $("#hl-qr"); qrBox.innerHTML = "";
       try {
         const qr = qrcode(0, "M"); qr.addData(url); qr.make();
         const img = new Image(); img.alt = "Kod QR untuk masuk"; img.src = qr.createDataURL(8, 0); qrBox.append(img);
       } catch { qrBox.style.display = "none"; }
       // buang pemain yang sudah terputus semasa kembali ke lobi
-      for (const [cid, p] of H.players) if (!p.connected) H.players.delete(cid);
-      for (const p of H.players.values()) { p.score = 0; p.streak = 0; p.correct = 0; p.last = 0; }
+      // (kecuali semasa sambung semula: markah & pemain lama dikekalkan sehingga mereka masuk semula)
+      if (!H.resumed) {
+        for (const [cid, p] of H.players) if (!p.connected) H.players.delete(cid);
+        for (const p of H.players.values()) { p.score = 0; p.streak = 0; p.correct = 0; p.last = 0; }
+      }
       renderPlayers();
       show("h-lobby");
       SFX.music("lobby");
@@ -504,6 +602,15 @@
       checkAllAnswered();
     }
 
+    setInterval(() => {
+      if (!H.peer || H.peer.destroyed) return;
+      for (const p of H.players.values()) {
+        if (!p.connected) continue;
+        if (Date.now() - (p.seen || 0) > 9000) { const c = p.conn; onClose(c); try { c?.close(); } catch {} }
+        else send(p, { t: "ping" });
+      }
+    }, 2000);
+
     function send(p, msg) { try { if (p.conn && p.conn.open) p.conn.send(msg); } catch {} }
     function broadcast(msg) { for (const p of H.players.values()) send(p, msg); }
     const connected = () => [...H.players.values()].filter(p => p.connected);
@@ -514,7 +621,7 @@
         if (p.conn === conn) {
           p.connected = false;
           const c = document.querySelector(`.chip[data-cid="${CSS.escape(p.cid)}"]`);
-          if (H.phase === "lobby" || H.phase === "setup") { H.players.delete(p.cid); c?.remove(); }
+          if ((H.phase === "lobby" || H.phase === "setup") && !H.resumed) { H.players.delete(p.cid); c?.remove(); }
           else c?.classList.add("off");
           updateCount();
           checkAllAnswered();
@@ -527,6 +634,7 @@
       if (m.t === "join") return onJoin(conn, m);
       const p = [...H.players.values()].find(x => x.conn === conn);
       if (!p) return;
+      p.seen = Date.now();
       if (m.t === "answer") onAnswer(p, m);
     }
 
@@ -535,7 +643,17 @@
       const cid = String(m.cid || "").slice(0, 40);
       if (!cid || name.length < 2) return conn.send({ t: "error", code: "name", msg: "Nama tidak sah." });
       let p = H.players.get(cid);
-      const rejoin = !!p;
+      let rejoin = !!p, oldCid = cid;
+      if (!p) {
+        const clash = [...H.players.values()].find(x => x.name.toLowerCase() === name.toLowerCase());
+        if (clash && !clash.connected) {
+          // pemain lama (terputus) masuk semula dengan nama sama, cth. selepas guru buka semula bilik dengan kod baharu
+          oldCid = clash.cid;
+          H.players.delete(oldCid); clash.cid = cid; H.players.set(cid, clash);
+          for (const mp of [H.answers, H.lastResults]) if (mp.has(oldCid)) { mp.set(cid, mp.get(oldCid)); mp.delete(oldCid); }
+          p = clash; rejoin = true;
+        }
+      }
       if (!p) {
         const clash = [...H.players.values()].find(x => x.name.toLowerCase() === name.toLowerCase());
         if (clash) return conn.send({ t: "error", code: "name", msg: "Nama ini sudah digunakan. Cuba nama lain." });
@@ -546,16 +664,17 @@
         if (p.conn && p.conn !== conn) { try { p.conn.close(); } catch {} }
         p.conn = conn; p.connected = true;
       }
-      p.conn = conn; p.connected = true;
+      p.conn = conn; p.connected = true; p.seen = Date.now();
 
       // kemas kini paparan lobi
       if (H.phase === "lobby" || H.phase === "setup") {
-        const old = document.querySelector(`.chip[data-cid="${CSS.escape(cid)}"]`);
+        const old = document.querySelector(`.chip[data-cid="${CSS.escape(oldCid)}"]`);
         const c = chip(p);
         if (old) old.replaceWith(c); else $("#hl-players").append(c);
         if (!rejoin) { SFX.pop(); setTimeout(() => FX.burstAt(c, 14), 50); }
       } else {
-        document.querySelector(`.chip[data-cid="${CSS.escape(cid)}"]`)?.classList.remove("off");
+        const old = document.querySelector(`.chip[data-cid="${CSS.escape(oldCid)}"]`);
+        if (old) { old.dataset.cid = cid; old.classList.remove("off"); }
         if (!rejoin) toast(`${AVATARS[p.avatar]} ${p.name} telah masuk`);
       }
       updateCount();
@@ -582,8 +701,9 @@
     // --- aliran permainan
     function startGame() {
       if (!connected().length) return;
-      for (const p of H.players.values()) { p.score = 0; p.streak = 0; p.correct = 0; p.last = 0; }
-      H.qIdx = -1;
+      if (!H.resumed) { for (const p of H.players.values()) { p.score = 0; p.streak = 0; p.correct = 0; p.last = 0; } H.played = 0; }
+      H.resumed = false;
+      H.qIdx = H.startIdx - 1;
       SFX.stopMusic();
       SFX.whoosh();
       nextQuestion();
@@ -630,6 +750,7 @@
       show("h-question");
       H.qStart = Date.now();
       H.qEnd = H.qStart + H.time * 1000;
+      save(H.qIdx);
       broadcast(questionMsg(H.time * 1000));
       SFX.music("think");
       const ring = $("#hq-ring"), timerEl = $("#hq-timer"), tEl = $("#hq-time");
@@ -687,6 +808,8 @@
           p.wasRight = true;
         } else { p.streak = 0; p.last = 0; p.wasRight = false; }
       }
+      H.played++;
+      save(H.qIdx + 1);
       const list = sorted();
       for (const p of H.players.values()) {
         const rank = rankOf(list, p);
@@ -749,9 +872,10 @@
     function podium() {
       clearInterval(H.timer); clearTimeout(H.introT);
       H.phase = "end";
+      clearSaved();
       SFX.stopMusic();
       const list = sorted();
-      list.forEach(p => send(p, { t: "end", rank: rankOf(list, p), total: list.length, score: p.score, correct: p.correct, questions: H.questions.length }));
+      list.forEach(p => send(p, { t: "end", rank: rankOf(list, p), total: list.length, score: p.score, correct: p.correct, questions: H.played }));
       show("h-podium");
       $("#hp-title").textContent = "Dan pemenangnya ialah…";
       $("#hp-btns").classList.remove("show");
@@ -778,7 +902,7 @@
     function downloadCsv() {
       const list = sorted();
       const rows = [["Kedudukan", "Nama", "Mata", "Betul", "Jumlah soalan"]];
-      list.forEach(p => rows.push([rankOf(list, p), p.name, p.score, p.correct, H.questions.length]));
+      list.forEach(p => rows.push([rankOf(list, p), p.name, p.score, p.correct, H.played]));
       const csv = "﻿" + rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\r\n");
       const a = document.createElement("a");
       a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
