@@ -4,7 +4,12 @@ window.CUSTOM = (() => {
   const load = () => { try { const v = JSON.parse(localStorage.getItem(KEY) || "[]"); return Array.isArray(v) ? v : []; } catch { return []; } };
   const persist = list => { try { localStorage.setItem(KEY, JSON.stringify(list)); return true; } catch { return false; } };
   const str = v => String(v == null ? "" : v).trim();
-  const cleanQ = q => ({ q: str(q && q.q), o: [str(q && q.o && q.o[0]), str(q && q.o && q.o[1])], a: q && Number(q.a) === 1 ? 1 : 0, why: str(q && q.why) });
+  const cleanQ = q => {
+    const c = { q: str(q && q.q), o: [str(q && q.o && q.o[0]), str(q && q.o && q.o[1])], a: q && Number(q.a) === 1 ? 1 : 0, why: str(q && q.why) };
+    const pic = Array.from(str(q && q.pic)).slice(0, 10).join("");
+    if (pic) c.pic = pic;
+    return c;
+  };
   const newId = () => "c-" + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-3);
 
   function toGameSet(s) {

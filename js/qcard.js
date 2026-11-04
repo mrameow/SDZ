@@ -7,6 +7,13 @@ window.QCARD = (() => {
   const MAX = IDS.length;
   const W = [[1, 0, 0, 0, 0], [1, 0, 1, 1, 1], [0, 1, 0, 0, 1], [0, 1, 1, 1, 0]];
   const indexOfId = new Map(IDS.map((id, i) => [id, i]));
+  // Satu kod bagi setiap murid. Kod tegak = A, kod terbalik = B.
+  // (Kad lipat: sisi B dicetak terbalik, jadi bila kad dipegang tegak, sisi B dibaca sebagai B.)
+  function read(m) {
+    const idx = indexOfId.get(m.id);
+    if (idx == null) return null;
+    return { idx, ans: answerOf(m.corners) };
+  }
 
   // grid 5x5 (1 = putih) bagi penanda; sempadan hitam ditambah semasa melukis
   function bits(id) {
@@ -18,11 +25,12 @@ window.QCARD = (() => {
     return m;
   }
   // SVG untuk cetakan (7x7 sel, sempadan hitam)
-  function markerSVG(cardIdx) {
+  // upsideDown = true: kod dicetak terbalik (untuk sisi B kad lipat)
+  function markerSVG(cardIdx, upsideDown = false) {
     const m = bits(IDS[cardIdx]);
     let r = "";
     for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) if (m[i][j]) r += `<rect x="${j + 1}" y="${i + 1}" width="1.02" height="1.02"/>`;
-    return `<svg viewBox="0 0 7 7" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges"><rect width="7" height="7" fill="#000"/><g fill="#fff">${r}</g></svg>`;
+    return `<svg viewBox="0 0 7 7" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges"><g${upsideDown ? ' transform="rotate(180 3.5 3.5)"' : ""}><rect width="7" height="7" fill="#000"/><g fill="#fff">${r}</g></g></svg>`;
   }
 
   // ---------------------------------------------------------------- pengesanan
@@ -117,10 +125,14 @@ window.QCARD = (() => {
       octx.setTransform(dpr, 0, 0, dpr, 0, 0);
       octx.clearRect(0, 0, ow, oh);
       const r = contentRect(), k = r.s / scale;
+      // jika kedua-dua sisi A dan B murid yang sama kelihatan, abaikan (kertas belum dilipat)
+      const seen = new Map();
+      for (const m of markers) { const rd = read(m); if (rd && rd.ans != null) { const set = seen.get(rd.idx) || new Set(); set.add(rd.ans); seen.set(rd.idx, set); } }
       for (const m of markers) {
-        const idx = indexOfId.get(m.id);
-        if (idx == null) continue;
-        const ans = answerOf(m.corners);
+        const rd = read(m);
+        if (!rd) continue;
+        const idx = rd.idx;
+        const ans = rd.ans != null && seen.get(idx).size === 1 ? rd.ans : null;
         const pts = m.corners.map(p => ({ x: r.x + p.x * k, y: r.y + p.y * k }));
         octx.lineWidth = 5; octx.strokeStyle = ans == null ? "#adb5bd" : "#51cf66";
         octx.fillStyle = ans == null ? "rgba(173,181,189,.25)" : "rgba(81,207,102,.3)";
@@ -139,5 +151,5 @@ window.QCARD = (() => {
     return { start, pause, stop: stopStream, switchCamera, isOn: () => !!stream, canSwitch: () => devices.length > 1 };
   }
 
-  return { IDS, MAX, bits, markerSVG, detect, answerOf, createScanner, indexOfId };
+  return { IDS, MAX, bits, markerSVG, detect, answerOf, read, createScanner, indexOfId };
 })();

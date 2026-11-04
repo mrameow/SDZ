@@ -5,6 +5,7 @@ Permainan kuiz masa nyata gaya "kuiz kelas" untuk murid: **guru (admin)** memapa
 Soalan diambil daripada *Kuiz Slot 2*. **Semua soalan hanya ada 2 pilihan: A atau B.**
 - **MISI 2 • Smart Digital Citizen**: 12 soalan (Kad Situasi A–F + Kuiz 1–6, dengan penerangan jawapan)
 - **MISI 3 • Digital Game Challenge**: 20 soalan
+- **Teknologi Ceria • Tahun 1 & 2**: 30 soalan bergambar aras rendah (kenali peranti, ikon & skrin, selamat & beradab, kreatif & kod)
 
 > Soalan asal yang ada 3 pilihan (A/B/C) telah diringkaskan kepada jawapan betul + satu pilihan salah.
 > Kedudukan A/B juga boleh ditukar secara rawak setiap permainan, jadi huruf jawapan mungkin berbeza daripada skema jawapan dalam dokumen asal.
@@ -14,7 +15,7 @@ Ada dua cara menjawab (pilih di skrin tetapan admin):
 | | 📄 **Kad kertas** (lalai) | 📷 **Q-Card** | 📱 **Peranti** |
 |---|---|---|---|
 | Murid perlukan | Kad A dan B (`kad.html`) | Q-Card bernombor (`qcard.html`) | Telefon / tablet |
-| Cara jawab | Angkat kad | Pegang kad dengan huruf jawapan di atas | Tekan jawapan pada peranti |
+| Cara jawab | Angkat kad | Tunjuk sisi A atau B (kad lipat) / huruf jawapan di atas (kad pusing) | Tekan jawapan pada peranti |
 | Markah | Guru tandakan kumpulan yang betul (pilihan) | Automatik: kamera guru imbas kad | Automatik ikut kelajuan |
 
 ## Cara main: Mod Kad Kertas 📄
@@ -34,13 +35,27 @@ Ada dua cara menjawab (pilih di skrin tetapan admin):
 Seperti Plickers / Q-card Quizizz: setiap murid ada kad bercetak sendiri, dan kamera guru membaca jawapan semua murid serentak.
 
 1. **Admin → 📷 Q-Card**. Taip senarai nama murid (satu nama setiap baris, maksimum 60). Baris 1 = kad nombor 1, baris 2 = kad nombor 2, dan seterusnya. Butang **🔢 Guna nombor sahaja** mengisi Murid 1–30.
-2. **🖨️ Cetak Q-Card**: setiap kad ada nombor & nama murid. Cetak semula jika senarai nama diubah.
+2. **🖨️ Cetak Q-Card**: setiap kad ada nombor & nama murid. Cetak semula jika senarai nama diubah. Dua jenis kad:
+   - **📄 Lipat (disyorkan untuk Tahun 1–2)**: satu murid sehelai A4 melintang. Kiri = **A** (bingkai biru), kanan = **B** (bingkai merah, kod dicetak terbalik). Lipat dua di garisan tengah; murid tunjuk sisi jawapan sambil pegang kad tegak.
+   - **🔄 Pusing**: 2 atau 4 kad sehelai; murid pusing kad supaya huruf jawapan di atas.
+   - Kedua-dua jenis guna kod yang sama, jadi boleh dicampur. Jika kertas belum dilipat (kedua-dua sisi kelihatan), kad itu tidak dikira.
 3. **Teruskan → Mula ▶**. Setiap soalan:
    - Masa tamat → **"✋ Angkat kad sekarang!"** → guru tekan **📷 Imbas kad**.
    - Murid pegang kad dengan huruf jawapan (**A** atau **B**) di **atas**.
    - Halakan kamera ke kelas. Kotak hijau = kad sudah dibaca; senarai di tepi menunjukkan siapa sudah diimbas.
    - Tekan **Dedah jawapan 👀**. Jawapan betul dapat 100 mata.
 4. Kamera perlukan **https** (GitHub Pages sudah https) dan kebenaran kamera. Butang 🔄 menukar kamera (depan/belakang).
+
+### 📱 Guna telefon sebagai kamera
+
+Lebih mudah bergerak di dalam kelas berbanding laptop:
+1. Di skrin guru (lobi Q-Card atau skrin imbasan), tekan **📱 Guna kamera telefon**. Kod QR dan kod 6 digit dipaparkan.
+2. Imbas kod QR dengan telefon → masukkan kata laluan admin → benarkan kamera.
+   (Atau di telefon: buka laman → **Admin** → **📱 Jadikan telefon ini kamera Q-Card** → masukkan kod.)
+3. Telefon mengimbas kad dan menghantar jawapan ke skrin guru secara terus. Kamera laptop tidak digunakan selagi telefon disambung (butang **💻 Guna kamera komputer** jika perlu).
+4. Telefon juga jadi **alat kawalan jauh**: butang besar di bawah mengikut langkah semasa (Mula, Tamatkan, Imbas kad, Dedah jawapan, Seterusnya).
+
+Perlukan internet pada kedua-dua peranti (untuk sambungan telefon ↔ laptop).
 
 Tip: guna kertas putih, cahaya yang cukup, dan kad saiz "2 kad sehelai" untuk kelas besar. Kad yang dipegang mengiring tidak dikira.
 
@@ -69,7 +84,7 @@ Semasa permainan, butang **⏹ Hentikan** di atas sebelah kanan membolehkan guru
 
 ## Soalan sendiri ✏️
 
-- **Admin → ✏️ Buat soalan sendiri**: tajuk, ikon dan soalan. Setiap soalan mesti ada **dua jawapan (A dan B)**; tekan **✔ Betul** pada jawapan yang betul. Penerangan jawapan adalah pilihan.
+- **Admin → ✏️ Buat soalan sendiri**: tajuk, ikon, soalan dan gambar emoji (pilihan, cth: 💻 atau 🤖➡️⭐). Setiap soalan mesti ada **dua jawapan (A dan B)**; tekan **✔ Betul** pada jawapan yang betul. Penerangan jawapan adalah pilihan.
 - Set MISI 2 / MISI 3 boleh **📋 Salin** untuk diubah suai. Set sendiri ada butang **✏️ Sunting**.
 - Soalan disimpan dalam **pelayar ini sahaja**. Guna **⬇ Eksport** untuk simpan fail `.json`, dan **📥 Import fail soalan** untuk memasukkannya di komputer lain atau berkongsi dengan guru lain.
 

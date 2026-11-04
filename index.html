@@ -193,6 +193,27 @@
           <button class="btn btn-primary btn-xl" id="btn-create">Teruskan 🎉</button>
         </div>
         <p class="err" id="setup-err" role="alert"></p>
+        <button type="button" class="btn btn-ghost btn-sm cam-entry" id="btn-be-camera">📱 Jadikan telefon ini kamera Q-Card</button>
+      </div>
+    </section>
+
+    <!-- ================= TELEFON SEBAGAI KAMERA ================= -->
+    <section class="screen" id="c-cam">
+      <div class="cc-wrap">
+        <div class="cc-top">
+          <span class="cc-dot" id="cc-dot"></span>
+          <span class="cc-status" id="cc-status">Menyambung…</span>
+          <button type="button" class="btn btn-ghost btn-sm" id="cc-exit">✕ Keluar</button>
+        </div>
+        <div class="cc-info" id="cc-info">📷 Kamera Q-Card</div>
+        <div class="cam-box cc-box">
+          <video id="cc-video" playsinline muted></video>
+          <canvas id="cc-overlay"></canvas>
+          <p class="cam-msg" id="cc-msg">Membuka kamera…</p>
+          <button class="icon-btn cam-switch" id="cc-switch" title="Tukar kamera">🔄</button>
+        </div>
+        <div class="cc-banner" id="cc-banner">⏳ Tunggu guru buka imbasan</div>
+        <button type="button" class="btn btn-primary btn-xl cc-action" id="cc-action" hidden></button>
       </div>
     </section>
 
@@ -206,7 +227,8 @@
           </div>
           <div class="pm-qcard">
             <h2>📷 Mod Q-Card</h2>
-            <p class="muted big-muted">Setiap murid pegang Q-Card sendiri.<br>Bila guru kata <b>“Angkat!”</b>, pegang kad dengan huruf jawapan kamu di <b>ATAS</b>. Guru akan imbas dengan kamera.</p>
+            <p class="muted big-muted">Setiap murid pegang Q-Card sendiri.<br>Bila guru kata <b>“Angkat!”</b>, tunjukkan jawapan kamu: sisi <b>A</b> atau sisi <b>B</b> (kad pusing: huruf jawapan di <b>atas</b>). Guru akan imbas dengan kamera.</p>
+            <button type="button" class="btn btn-ghost btn-phone" data-phone>📱 Guna kamera telefon <span class="phone-badge" data-phone-count></span></button>
           </div>
         </div>
         <div class="lobby-head card device-only">
@@ -251,7 +273,7 @@
             <span id="hq-time">20</span>
           </div>
           <div class="ans-count device-only"><b id="hq-answered">0</b><span>jawapan</span></div>
-          <div class="paper-hint paper-only">🤔 Fikir dahulu…<br><small class="pm-paper">Sediakan kad <b class="ca">A</b> atau <b class="cb">B</b></small><small class="pm-qcard">Sediakan Q-Card: huruf jawapan di atas</small></div>
+          <div class="paper-hint paper-only">🤔 Fikir dahulu…<br><small class="pm-paper">Sediakan kad <b class="ca">A</b> atau <b class="cb">B</b></small><small class="pm-qcard">Sediakan Q-Card: sisi <b class="cfa">A</b> atau <b class="cfb">B</b></small></div>
         </div>
         <div class="raise-banner" id="hq-raise">
           <div class="raise-text">✋ Angkat kad sekarang!</div>
@@ -282,6 +304,10 @@
               <canvas id="hs-overlay"></canvas>
               <p class="cam-msg" id="hs-msg">Membuka kamera…</p>
               <button class="icon-btn cam-switch" id="btn-cam-switch" title="Tukar kamera">🔄</button>
+              <div class="cam-tools">
+                <button type="button" class="btn btn-ghost btn-sm" data-phone>📱 Telefon <span class="phone-badge" data-phone-count></span></button>
+                <button type="button" class="btn btn-ghost btn-sm" id="btn-cam-local">💻 Guna kamera komputer</button>
+              </div>
             </div>
             <p class="muted cam-hint">Halakan kamera ke arah kad murid. Kotak hijau = kad sudah dibaca. Murid boleh tukar jawapan sebelum didedahkan.</p>
           </div>
@@ -348,6 +374,23 @@
   <dialog id="dlg-list" class="card">
     <h3>Keputusan penuh</h3>
     <ol class="board compact" id="dlg-list-ol"></ol>
+    <form method="dialog"><button class="btn btn-primary">Tutup</button></form>
+  </dialog>
+
+  <!-- Dialog sambung telefon sebagai kamera -->
+  <dialog id="dlg-phone" class="card">
+    <h3>📱 Guna kamera telefon</h3>
+    <div class="phone-body">
+      <div class="qr phone-qr" id="phone-qr"></div>
+      <ol class="phone-steps">
+        <li>Imbas kod QR ini dengan kamera telefon guru.</li>
+        <li>Masukkan kata laluan admin.</li>
+        <li>Benarkan kamera, kemudian halakan telefon ke arah kad murid.</li>
+      </ol>
+    </div>
+    <p class="muted phone-alt">Atau buka laman ini di telefon → <b>Admin</b> → <b>📱 Jadikan telefon ini kamera</b>, dan masukkan kod:</p>
+    <div class="phone-pin" id="phone-pin">··· ···</div>
+    <p class="phone-status" id="phone-status">Menyediakan…</p>
     <form method="dialog"><button class="btn btn-primary">Tutup</button></form>
   </dialog>
 

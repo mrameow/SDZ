@@ -81,8 +81,17 @@
   // Kata laluan admin (semakan di pelayar sahaja: menghalang murid, bukan keselamatan sebenar)
   const ADMIN_PASS = "0000";
   const dlgAdmin = $("#dlg-admin");
+  let afterAdmin = null;
+  function requireAdmin(fn) {
+    if (store.get("sdz-admin", false)) return fn();
+    afterAdmin = fn;
+    $("#in-admin").value = ""; $("#admin-err").textContent = "";
+    dlgAdmin.showModal();
+    setTimeout(() => $("#in-admin").focus(), 50);
+  }
   $("#btn-admin").onclick = () => {
     SFX.click();
+    afterAdmin = null;
     if (store.get("sdz-admin", false)) return Host.enter();
     $("#in-admin").value = ""; $("#admin-err").textContent = "";
     dlgAdmin.showModal();
@@ -93,7 +102,9 @@
     e.preventDefault();
     if ($("#in-admin").value === ADMIN_PASS) {
       store.set("sdz-admin", true);
-      dlgAdmin.close(); SFX.correct(); Host.enter();
+      dlgAdmin.close(); SFX.correct();
+      const fn = afterAdmin; afterAdmin = null;
+      fn ? fn() : Host.enter();
     } else {
       $("#admin-err").textContent = "Kata laluan salah.";
       $("#in-admin").value = "";
@@ -270,7 +281,9 @@
       clearInterval(P.timer);
       P.qIdx = m.idx;
       $("#pa-num").textContent = `${m.idx + 1} / ${m.total}`;
-      $("#pa-q").textContent = m.q;
+      const pq = $("#pa-q"); pq.innerHTML = "";
+      if (m.pic) pq.append(el("span", "p-pic", m.pic));
+      pq.append(document.createTextNode(m.q));
       const box = $("#pa-answers"); box.innerHTML = "";
       m.o.forEach((txt, i) => {
         const b = el("button", `ans c${i}`);
@@ -557,6 +570,13 @@
       });
     }
     $("#btn-new-set").onclick = () => { SFX.click(); openEditor(null); };
+    $("#btn-be-camera").onclick = () => {
+      SFX.click();
+      const code = (prompt("Masukkan kod kamera 6 digit yang dipaparkan di skrin guru (📱 Guna kamera telefon):") || "").replace(/\D/g, "");
+      if (!code) return;
+      if (code.length !== 6) { toast("Kod mesti 6 nombor."); return; }
+      exit(); Cam.start(code);
+    };
     $("#btn-import-set").onclick = () => { SFX.click(); $("#in-import").click(); };
     $("#in-import").onchange = async e => {
       const f = e.target.files[0]; e.target.value = "";
@@ -633,7 +653,7 @@
     function openEditor(src, asCopy) {
       ed = src
         ? { id: asCopy ? null : src.id, title: asCopy ? `${src.title} (salinan)`.slice(0, 50) : src.title, emoji: src.emoji || "📝",
-            questions: src.questions.map(q => ({ q: q.q, o: [q.o[0], q.o[1]], a: q.a, why: q.why || "" })) }
+            questions: src.questions.map(q => ({ q: q.q, o: [q.o[0], q.o[1]], a: q.a, why: q.why || "", pic: q.pic || "" })) }
         : { id: null, title: "", emoji: "📝", questions: [{ q: "", o: ["", ""], a: 0, why: "" }] };
       edDirty = !!asCopy;
       $("#ed-err").textContent = "";
@@ -664,7 +684,9 @@
         }, "del"));
         const ta = el("textarea"); ta.rows = 2; ta.maxLength = 300; ta.placeholder = "Tulis soalan di sini…"; ta.value = q.q;
         ta.oninput = () => { q.q = ta.value; edDirty = true; card.classList.remove("bad"); };
-        card.append(head, ta);
+        const pic = el("input", "ed-pic"); pic.maxLength = 16; pic.placeholder = "🖼️ Gambar emoji (pilihan), cth: 💻 atau 🤖➡️⭐"; pic.value = q.pic || "";
+        pic.oninput = () => { q.pic = pic.value; edDirty = true; };
+        card.append(head, ta, pic);
         const okBtns = [];
         [0, 1].forEach(k => {
           const row = el("div", "ed-opt");
@@ -741,12 +763,126 @@
       $("#dlg-list").showModal();
     };
 
+    // butang "seterusnya" yang aktif (untuk papan kekunci & alat kawalan telefon)
+    function nextButton(withSkip) {
+      const b = document.querySelector(".screen.active #btn-start:not(:disabled), .screen.active.raising #btn-show-answer, .screen.active #btn-scan-reveal, .screen.active.revealed #btn-reveal-next, .screen.active #btn-board-next");
+      if (b && b.offsetParent !== null) return b;
+      if (withSkip && H.phase === "question") { const k = $("#btn-skip"); if (k.offsetParent !== null) return k; }
+      return null;
+    }
+
+    // --- telefon sebagai kamera Q-Card
+    H.camPeer = null; H.camPin = null; H.cams = new Set();
+    const dlgPhone = $("#dlg-phone");
+    document.querySelectorAll("[data-phone]").forEach(b => b.onclick = () => { SFX.click(); openPhoneDialog(); });
+    function openPhoneDialog() { ensureCamRoom(); renderPhone(); dlgPhone.showModal(); }
+    function ensureCamRoom(attempt = 0) {
+      if (H.camPeer && !H.camPeer.destroyed) return;
+      const pin = String(Math.floor(100000 + Math.random() * 900000));
+      const peer = new Peer(PREFIX + "cam-" + pin, peerOptions());
+      H.camPeer = peer; H.camPin = null;
+      peer.on("open", () => { H.camPin = pin; renderPhone(); });
+      peer.on("connection", conn => {
+        conn.on("data", m => onCamData(conn, m));
+        conn.on("close", () => { H.cams.delete(conn); camUI(); });
+        conn.on("error", () => { H.cams.delete(conn); camUI(); });
+      });
+      peer.on("disconnected", () => { if (!peer.destroyed) setTimeout(() => { try { peer.reconnect(); } catch {} }, 1000); });
+      peer.on("error", err => {
+        if (err.type === "unavailable-id" && attempt < 5) { try { peer.destroy(); } catch {} H.camPeer = null; ensureCamRoom(attempt + 1); return; }
+        if (err.type === "peer-unavailable") return;
+        if (!H.camPin) { $("#phone-status").textContent = "⚠️ Tidak dapat menyambung ke internet. Cuba lagi."; try { peer.destroy(); } catch {} H.camPeer = null; }
+      });
+    }
+    function renderPhone() {
+      const st = $("#phone-status"), box = $("#phone-qr");
+      if (!H.camPin) { $("#phone-pin").textContent = "··· ···"; box.innerHTML = ""; if (!st.textContent.startsWith("⚠️")) st.textContent = "Menyediakan…"; st.classList.remove("ok"); return; }
+      $("#phone-pin").textContent = H.camPin.slice(0, 3) + " " + H.camPin.slice(3);
+      if (box.dataset.pin !== H.camPin) {
+        box.innerHTML = ""; box.dataset.pin = H.camPin;
+        try {
+          const qr = qrcode(0, "M"); qr.addData(location.origin + location.pathname + "?cam=" + H.camPin); qr.make();
+          const img = new Image(); img.alt = "Kod QR kamera telefon"; img.src = qr.createDataURL(6, 0); box.append(img);
+        } catch {}
+      }
+      st.textContent = H.cams.size ? `✅ ${H.cams.size} telefon disambung` : "Menunggu telefon…";
+      st.classList.toggle("ok", H.cams.size > 0);
+    }
+    function camUI() {
+      document.querySelectorAll("[data-phone-count]").forEach(b => b.textContent = H.cams.size || "");
+      renderPhone();
+      if (H.phase === "scan") scanSource();
+    }
+    function camNames() {
+      if (H.qcard) { const a = []; for (const p of H.players.values()) a[Number(p.cid.slice(1))] = p.name; return a; }
+      return rosterNames();
+    }
+    function camState() {
+      const b = nextButton(true);
+      return {
+        t: "state", phase: H.phase, q: H.qIdx + 1, total: H.questions.length, students: H.players.size,
+        scanned: H.phase === "scan" ? [...H.answers.keys()].map(c => Number(c.slice(1))) : [],
+        action: b ? (b.innerText || b.textContent).replace(/\s+/g, " ").trim() : "", key: H.qIdx + ":" + H.phase
+      };
+    }
+    function onCamData(conn, m) {
+      if (!m || typeof m !== "object") return;
+      conn.seen = Date.now();
+      if (m.t === "hello") {
+        const isNew = !H.cams.has(conn);
+        H.cams.add(conn);
+        try { conn.send({ t: "roster", names: camNames() }); conn.send(camState()); } catch {}
+        camUI();
+        if (isNew) { SFX.correct(); toast("📱 Telefon kamera disambung"); }
+      } else if (!H.cams.has(conn)) {
+        return;
+      } else if (m.t === "scan") {
+        const idx = Number(m.idx), ans = Number(m.ans);
+        if (Number.isInteger(idx) && (ans === 0 || ans === 1)) onScanRead(idx, ans);
+      } else if (m.t === "action") {
+        const b = nextButton(true);
+        if (b) b.click();
+      }
+    }
+    setInterval(() => {
+      if (!H.cams.size) return;
+      const st = camState();
+      let names = null;
+      for (const c of [...H.cams]) {
+        if (Date.now() - (c.seen || 0) > 9000) { H.cams.delete(c); try { c.close(); } catch {} camUI(); continue; }
+        try { if (c.open) { c.send(st); if (c.rosterKey !== H.players.size + ":" + H.qcard) { names = names || camNames(); c.send({ t: "roster", names }); c.rosterKey = H.players.size + ":" + H.qcard; } } } catch {}
+      }
+    }, 700);
+    // semasa imbasan: guna telefon jika ada, jika tidak guna kamera komputer
+    let forceLocal = false;
+    function scanSource() {
+      const phone = H.cams.size > 0 && !forceLocal;
+      $("#btn-cam-local").style.display = phone ? "" : "none";
+      if (phone) {
+        H.scanner?.stop();
+        $("#hs-msg").textContent = "📱 Telefon sedang mengimbas… Halakan kamera telefon ke arah kad murid.";
+        $("#btn-cam-switch").style.display = "none";
+        return;
+      }
+      if (!H.scanner) {
+        H.scanner = QCARD.createScanner({
+          video: $("#hs-video"), overlay: $("#hs-overlay"), onRead: onScanRead,
+          label: idx => { const p = H.players.get("s" + idx); return p ? `${idx + 1}. ${p.name}` : `Kad ${idx + 1} (tiada nama)`; },
+          onStatus: m => { $("#hs-msg").textContent = m; }
+        });
+      }
+      if (H.scanner.isOn()) { H.scanner.start(); return; }
+      $("#btn-cam-switch").style.display = "none";
+      H.scanner.start().then(() => { $("#btn-cam-switch").style.display = H.scanner.canSwitch() ? "" : "none"; });
+    }
+    $("#btn-cam-local").onclick = () => { SFX.click(); forceLocal = true; scanSource(); };
+
     // pintasan papan kekunci untuk guru
     document.addEventListener("keydown", e => {
       if (!document.body.classList.contains("is-host")) return;
       if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
       if (e.key === " " || e.key === "Enter") {
-        const btn = document.querySelector(".screen.active #btn-start:not(:disabled), .screen.active.raising #btn-show-answer, .screen.active #btn-scan-reveal, .screen.active.revealed #btn-reveal-next, .screen.active #btn-board-next");
+        const btn = nextButton();
         if (btn) { e.preventDefault(); btn.click(); }
       }
     });
@@ -767,6 +903,8 @@
       try { H.peer?.destroy(); } catch {}
       H.peer = null; H.players.clear(); H.ready = false; H.paper = false; H.qcard = false;
       H.scanner?.stop();
+      try { H.camPeer?.destroy(); } catch {}
+      H.camPeer = null; H.camPin = null; H.cams.clear();
       document.body.classList.remove("is-host", "paper", "qcard");
       show("p-join");
     }
@@ -996,7 +1134,7 @@
     }
     function questionMsg(remaining) {
       const q = H.questions[H.qIdx];
-      return { t: "question", idx: H.qIdx, total: H.questions.length, q: q.q, o: q.o, time: H.time * 1000, remaining };
+      return { t: "question", idx: H.qIdx, total: H.questions.length, q: q.q, pic: q.pic || "", o: q.o, time: H.time * 1000, remaining };
     }
     function beginQuestion() {
       H.phase = "question";
@@ -1005,7 +1143,9 @@
       const scr = $("#h-question"); scr.classList.remove("revealed", "raising");
       $("#hq-num").textContent = `${H.qIdx + 1} / ${H.questions.length}`;
       $("#hq-tag").textContent = q.tag;
-      const qb = $("#hq-q"); qb.textContent = q.q; qb.classList.remove("pop-in"); void qb.offsetWidth;
+      const qb = $("#hq-q"); qb.innerHTML = ""; qb.classList.toggle("has-pic", !!q.pic);
+      if (q.pic) qb.append(el("div", "hq-pic", q.pic));
+      qb.append(el("div", "hq-text", q.q));
       $("#hq-answered").textContent = "0";
       $("#btn-skip").style.display = "";
       const box = $("#hq-options"); box.innerHTML = "";
@@ -1078,7 +1218,7 @@
       H.answers.clear();
       const q = H.questions[H.qIdx];
       $("#hs-num").textContent = `${H.qIdx + 1} / ${H.questions.length}`;
-      $("#hs-q").textContent = q.q;
+      $("#hs-q").textContent = (q.pic ? q.pic + "  " : "") + q.q;
       const grid = $("#hs-grid"); grid.innerHTML = "";
       for (const p of H.players.values()) {
         const c = el("div", "sc-chip"); c.dataset.cid = p.cid;
@@ -1088,15 +1228,8 @@
       $("#hs-count").textContent = "0";
       $("#hs-total").textContent = H.players.size;
       show("h-scan");
-      if (!H.scanner) {
-        H.scanner = QCARD.createScanner({
-          video: $("#hs-video"), overlay: $("#hs-overlay"), onRead: onScanRead,
-          label: idx => { const p = H.players.get("s" + idx); return p ? `${idx + 1}. ${p.name}` : `Kad ${idx + 1} (tiada nama)`; },
-          onStatus: m => { $("#hs-msg").textContent = m; }
-        });
-      }
-      $("#btn-cam-switch").style.display = "none";
-      H.scanner.start().then(() => { $("#btn-cam-switch").style.display = H.scanner.canSwitch() ? "" : "none"; });
+      forceLocal = false;
+      scanSource();
     }
     function onScanRead(idx, ans) {
       if (H.phase !== "scan") return;
@@ -1304,9 +1437,118 @@
     return { enter };
   })();
 
+  // ======================================================================
+  //                   TELEFON SEBAGAI KAMERA Q-CARD
+  // ======================================================================
+  const Cam = (() => {
+    const C = { peer: null, conn: null, pin: null, state: null, names: [], scanner: null, sent: new Map(), retry: 0, retryT: null, on: false, seen: 0, wake: null, key: "" };
+    function setStatus(txt, ok) { $("#cc-status").textContent = txt; $("#cc-dot").classList.toggle("on", !!ok); }
+    function start(pin) {
+      C.pin = pin; C.on = true; C.retry = 0;
+      Player.stop();
+      document.body.classList.add("in-game");
+      history.replaceState?.(null, "", location.pathname + "?cam=" + pin + (params.get("peer") ? "&peer=" + params.get("peer") : ""));
+      show("c-cam");
+      renderState();
+      connect();
+      if (!C.scanner) {
+        C.scanner = QCARD.createScanner({
+          video: $("#cc-video"), overlay: $("#cc-overlay"), onRead,
+          label: idx => C.names[idx] ? `${idx + 1}. ${C.names[idx]}` : `Kad ${idx + 1}`,
+          onStatus: m => { $("#cc-msg").textContent = m; }
+        });
+      }
+      $("#cc-switch").style.display = "none";
+      C.scanner.start().then(() => { $("#cc-switch").style.display = C.scanner.canSwitch() ? "" : "none"; });
+      keepAwake();
+    }
+    async function keepAwake() { try { C.wake = await navigator.wakeLock?.request("screen"); } catch {} }
+    document.addEventListener("visibilitychange", () => { if (C.on && document.visibilityState === "visible") keepAwake(); });
+    function connect() {
+      clearTimeout(C.retryT);
+      try { C.conn?.close(); } catch {}
+      try { C.peer?.destroy(); } catch {}
+      setStatus(C.retry ? `Menyambung semula… (${C.retry})` : "Menyambung ke skrin guru…", false);
+      const peer = new Peer(peerOptions());
+      C.peer = peer;
+      peer.on("open", () => {
+        const conn = peer.connect(PREFIX + "cam-" + C.pin, { reliable: true });
+        C.conn = conn;
+        conn.on("open", () => { C.retry = 0; C.seen = Date.now(); setStatus("Disambung ke skrin guru", true); conn.send({ t: "hello" }); });
+        conn.on("data", onData);
+        conn.on("close", () => { if (conn === C.conn) retry(); });
+        conn.on("error", () => { if (conn === C.conn) retry(); });
+      });
+      peer.on("error", err => {
+        if (peer !== C.peer) return;
+        if (err.type === "peer-unavailable") setStatus("Kod tidak dijumpai. Pastikan skrin guru membuka “📱 Guna kamera telefon”.", false);
+        retry();
+      });
+    }
+    function retry() {
+      if (!C.on) return;
+      C.conn = null; C.retry++;
+      clearTimeout(C.retryT);
+      C.retryT = setTimeout(connect, Math.min(1500 + C.retry * 700, 5000));
+    }
+    function send(m) { try { if (C.conn && C.conn.open) C.conn.send(m); } catch {} }
+    function onData(m) {
+      C.seen = Date.now();
+      if (m.t === "roster") C.names = Array.isArray(m.names) ? m.names : [];
+      else if (m.t === "state") {
+        if (m.key !== C.key) { C.key = m.key; C.sent.clear(); }
+        C.state = m;
+        renderState();
+      }
+    }
+    function renderState() {
+      const st = C.state;
+      const info = $("#cc-info"), ban = $("#cc-banner"), act = $("#cc-action");
+      if (!st) { info.textContent = "📷 Kamera Q-Card"; ban.textContent = "⏳ Menunggu skrin guru…"; ban.classList.remove("scan"); act.hidden = true; return; }
+      const scanning = st.phase === "scan";
+      info.textContent = st.total && st.q > 0 && st.phase !== "lobby" && st.phase !== "setup"
+        ? `Soalan ${st.q} / ${st.total}` + (scanning ? ` • ${st.scanned.length} / ${st.students} diimbas` : "")
+        : `📷 Kamera Q-Card • ${st.students || 0} murid`;
+      ban.classList.toggle("scan", scanning);
+      ban.textContent = scanning ? "✅ Sedang mengimbas: halakan kamera ke kad murid" : st.phase === "end" ? "🏁 Permainan tamat" : "⏳ Tunggu guru buka imbasan";
+      act.hidden = !st.action;
+      act.textContent = st.action || "";
+    }
+    function onRead(idx, ans) {
+      if (!C.state || C.state.phase !== "scan") return;
+      const now = Date.now(), k = C.sent.get(idx);
+      if (k && k.ans === ans && now - k.t < 1500) return;
+      C.sent.set(idx, { ans, t: now });
+      if (!k) { try { navigator.vibrate?.(30); } catch {} }
+      send({ t: "scan", idx, ans });
+    }
+    $("#cc-action").onclick = () => { SFX.click(); send({ t: "action" }); };
+    $("#cc-switch").onclick = () => { SFX.click(); C.scanner?.switchCamera(); };
+    $("#cc-exit").onclick = () => {
+      SFX.click();
+      C.on = false; clearTimeout(C.retryT);
+      try { C.conn?.close(); } catch {}
+      try { C.peer?.destroy(); } catch {}
+      C.scanner?.stop();
+      try { C.wake?.release(); } catch {}
+      document.body.classList.remove("in-game");
+      history.replaceState?.(null, "", location.pathname);
+      show("p-join");
+    };
+    // degupan: jika skrin guru senyap terlalu lama, sambung semula
+    setInterval(() => {
+      if (!C.on || !C.conn) return;
+      send({ t: "ping" });
+      if (C.conn.open && Date.now() - C.seen > 7000) retry();
+    }, 2000);
+    return { start };
+  })();
+
   // ---------------------------------------------------------------- mula
   if (typeof Peer === "undefined") {
     $("#pin-err").textContent = "Gagal memuatkan modul sambungan. Muat semula halaman.";
   }
-  Player.boot();
+  const camPin = (params.get("cam") || "").replace(/\D/g, "");
+  if (camPin.length === 6) requireAdmin(() => Cam.start(camPin));
+  else Player.boot();
 })();

@@ -503,3 +503,39 @@ body.qcard .pm-paper { display: none; }
 .ed-foot { position: sticky; bottom: 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 12px 16px; z-index: 2; }
 .ed-spacer { flex: 1; }
 @media (max-width: 560px) { .ed-foot .btn { font-size: 15px; padding: 10px 12px; } .ed-opt { flex-wrap: wrap; } .ed-opt input { flex: 1 1 200px; } }
+
+/* ---------- gambar soalan ---------- */
+.hq-question.has-pic { display: flex; align-items: center; justify-content: center; gap: clamp(16px, 3vw, 40px); text-align: left; }
+.hq-pic { font-size: clamp(64px, 13vh, 140px); line-height: 1; flex: none; animation: picIn .7s cubic-bezier(.2,.9,.3,1.6) both, floaty 3s 0.7s ease-in-out infinite; filter: drop-shadow(0 8px 10px rgba(80,60,160,.18)); white-space: nowrap; }
+@keyframes picIn { from { opacity: 0; transform: scale(.3) rotate(-15deg); } to { opacity: 1; transform: none; } }
+@keyframes floaty { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+.p-pic { display: block; font-size: 56px; line-height: 1.1; text-align: center; margin-bottom: 6px; }
+.ed-pic { font-size: 16px !important; }
+@media (max-width: 640px) { .hq-question.has-pic { flex-direction: column; text-align: center; } }
+
+/* ---------- telefon sebagai kamera ---------- */
+.btn-phone { margin-top: 10px; }
+.phone-badge:not(:empty) { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: var(--ok); color: #fff; font-size: 13px; margin-left: 4px; }
+.cam-tools { position: absolute; left: 10px; bottom: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+#dlg-phone { max-width: 560px; }
+.phone-body { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+.phone-qr { width: 190px; height: 190px; box-shadow: 0 0 0 2px var(--line); }
+.phone-steps { flex: 1; min-width: 200px; margin: 0; padding-left: 20px; line-height: 1.6; font-weight: 500; }
+.phone-alt { margin: 14px 0 4px; font-size: 15px; }
+.phone-pin { font-size: 44px; font-weight: 700; letter-spacing: .08em; color: var(--primary); }
+.phone-status { font-weight: 600; margin: 6px 0 0; }
+.phone-status.ok { color: #2b8a3e; }
+.cam-entry { align-self: center; margin-top: 6px; }
+
+#c-cam { padding: 64px 10px 14px; }
+.cc-wrap { width: 100%; max-width: 720px; height: 100%; display: flex; flex-direction: column; gap: 10px; }
+.cc-top { display: flex; align-items: center; gap: 8px; }
+.cc-dot { width: 12px; height: 12px; border-radius: 50%; background: #adb5bd; flex: none; }
+.cc-dot.on { background: var(--ok); box-shadow: 0 0 0 4px rgba(47,179,68,.2); }
+.cc-status { flex: 1; font-weight: 600; }
+.cc-info { background: #fff; border-radius: 14px; padding: 10px 14px; font-weight: 600; font-size: 17px; box-shadow: var(--shadow); text-align: center; }
+.cc-box { flex: 1; min-height: 260px; }
+.cc-banner { text-align: center; font-weight: 600; font-size: 18px; padding: 10px; border-radius: 14px; background: #fff3bf; color: #946c00; }
+.cc-banner.scan { background: var(--ok-bg); color: #2b8a3e; }
+.cc-action { width: 100%; }
+.paper-hint .cfa { color: #1c7ed6; } .paper-hint .cfb { color: #e03131; }
