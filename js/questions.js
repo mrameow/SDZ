@@ -229,7 +229,7 @@ window.QUIZ_SETS = [
   {
     id: "mudah20",
     title: "Kenali Teknologi • Mudah",
-    subtitle: "20 soalan bergambar paling mudah • A / B",
+    subtitle: "21 soalan bergambar paling mudah • A / B",
     emoji: "⭐",
     questions: [
       { tag: "⭐ Kenali Teknologi • 1", pic: "📺",
@@ -291,7 +291,10 @@ window.QUIZ_SETS = [
         o: ["Baling tetikus ke lantai", "Tutup komputer dengan betul"], a: 1, why: "Kita menjaga komputer supaya tahan lama." },
       { tag: "⭐ Kenali Teknologi • 20", pic: "🖐️",
         q: "Sebelum menggunakan tablet, tangan kita perlu…",
-        o: ["Bersih dan kering", "Kotor dan melekit"], a: 0, why: "Tangan yang bersih menjaga tablet daripada kotor dan rosak." }
+        o: ["Bersih dan kering", "Kotor dan melekit"], a: 0, why: "Tangan yang bersih menjaga tablet daripada kotor dan rosak." },
+      { tag: "⭐ Kenali Teknologi • 21", pic: "🎂",
+        q: "Kita mahu merakam video majlis hari jadi adik. Apakah yang kita gunakan?",
+        o: ["🎈 Belon", "📹 Kamera video"], a: 1, why: "Kamera video merakam gambar yang bergerak dan bunyi." }
     ]
   }
 ];

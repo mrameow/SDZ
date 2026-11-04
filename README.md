@@ -6,7 +6,7 @@ Soalan diambil daripada *Kuiz Slot 2*. **Semua soalan hanya ada 2 pilihan: A ata
 - **MISI 2 • Smart Digital Citizen**: 12 soalan (Kad Situasi A–F + Kuiz 1–6, dengan penerangan jawapan)
 - **MISI 3 • Digital Game Challenge**: 20 soalan
 - **Teknologi Ceria • Tahun 1 & 2**: 30 soalan bergambar aras rendah (kenali peranti, ikon & skrin, guna teknologi dengan selamat)
-- **Kenali Teknologi • Mudah**: 20 soalan bergambar paling mudah
+- **Kenali Teknologi • Mudah**: 21 soalan bergambar paling mudah
 
 > Soalan asal yang ada 3 pilihan (A/B/C) telah diringkaskan kepada jawapan betul + satu pilihan salah.
 > Kedudukan A/B juga boleh ditukar secara rawak setiap permainan, jadi huruf jawapan mungkin berbeza daripada skema jawapan dalam dokumen asal.
