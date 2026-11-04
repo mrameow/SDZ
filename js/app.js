@@ -23,6 +23,22 @@
     del(k, s = sessionStorage) { try { s.removeItem(k); } catch {} }
   };
 
+  // Hantar mesej PeerJS dengan selamat. PeerJS membuang mesej yang dihantar sebelum sambungan "open"
+  // (boleh berlaku pada rangkaian sebenar apabila mesej pertama pihak lain tiba lebih awal),
+  // jadi mesej disimpan dahulu dan dihantar sebaik sahaja sambungan dibuka.
+  function flushQueue(conn) {
+    const q = conn._sdzQ || []; conn._sdzQ = null;
+    for (const m of q) { try { conn.send(m); } catch {} }
+  }
+  function safeSend(conn, msg) {
+    if (!conn) return;
+    try {
+      if (conn.open) { if (conn._sdzQ) flushQueue(conn); conn.send(msg); return; }
+      if (!conn._sdzQ) { conn._sdzQ = []; conn.on("open", () => flushQueue(conn)); }
+      if (conn._sdzQ.length < 50) conn._sdzQ.push(msg);
+    } catch {}
+  }
+
   function peerOptions() {
     // ?peer=host:port membolehkan pelayan PeerJS sendiri (untuk ujian / rangkaian sekolah)
     const custom = params.get("peer");
@@ -785,7 +801,7 @@
       peer.on("connection", conn => {
         conn.on("data", m => onCamData(conn, m));
         conn.on("close", () => { H.cams.delete(conn); camUI(); });
-        conn.on("error", () => { H.cams.delete(conn); camUI(); });
+        conn.on("error", () => {}); // ralat hantar bukan bermaksud terputus; "close" & degupan mengendalikannya
       });
       peer.on("disconnected", () => { if (!peer.destroyed) setTimeout(() => { try { peer.reconnect(); } catch {} }, 1000); });
       peer.on("error", err => {
@@ -828,15 +844,14 @@
     function onCamData(conn, m) {
       if (!m || typeof m !== "object") return;
       conn.seen = Date.now();
-      if (m.t === "hello") {
+      if (m.t === "hello" || !H.cams.has(conn)) {
         const isNew = !H.cams.has(conn);
         H.cams.add(conn);
-        try { conn.send({ t: "roster", names: camNames() }); conn.send(camState()); } catch {}
+        safeSend(conn, { t: "roster", names: camNames() }); safeSend(conn, camState());
         camUI();
         if (isNew) { SFX.correct(); toast("📱 Telefon kamera disambung"); }
-      } else if (!H.cams.has(conn)) {
-        return;
-      } else if (m.t === "scan") {
+      }
+      if (m.t === "scan") {
         const idx = Number(m.idx), ans = Number(m.ans);
         if (Number.isInteger(idx) && (ans === 0 || ans === 1)) onScanRead(idx, ans);
       } else if (m.t === "action") {
@@ -850,7 +865,8 @@
       let names = null;
       for (const c of [...H.cams]) {
         if (Date.now() - (c.seen || 0) > 9000) { H.cams.delete(c); try { c.close(); } catch {} camUI(); continue; }
-        try { if (c.open) { c.send(st); if (c.rosterKey !== H.players.size + ":" + H.qcard) { names = names || camNames(); c.send({ t: "roster", names }); c.rosterKey = H.players.size + ":" + H.qcard; } } } catch {}
+        safeSend(c, st);
+        if (c.rosterKey !== H.players.size + ":" + H.qcard) { names = names || camNames(); safeSend(c, { t: "roster", names }); c.rosterKey = H.players.size + ":" + H.qcard; }
       }
     }, 700);
     // semasa imbasan: guna telefon jika ada, jika tidak guna kamera komputer
@@ -928,7 +944,7 @@
       peer.on("connection", conn => {
         conn.on("data", m => onData(conn, m));
         conn.on("close", () => onClose(conn));
-        conn.on("error", () => onClose(conn));
+        conn.on("error", () => {}); // ralat hantar bukan bermaksud terputus
       });
       peer.on("disconnected", () => { if (!peer.destroyed) setTimeout(() => { try { peer.reconnect(); } catch {} }, 1000); });
       peer.on("error", err => {
@@ -1003,7 +1019,7 @@
     }
     function kick(cid) {
       const p = H.players.get(cid); if (!p) return;
-      try { p.conn?.send({ t: "kicked" }); } catch {}
+      safeSend(p.conn, { t: "kicked" });
       setTimeout(() => { try { p.conn?.close(); } catch {} }, 300);
       H.players.delete(cid);
       const c = document.querySelector(`.chip[data-cid="${CSS.escape(cid)}"]`); c?.remove();
@@ -1020,7 +1036,7 @@
       }
     }, 2000);
 
-    function send(p, msg) { try { if (p.conn && p.conn.open) p.conn.send(msg); } catch {} }
+    function send(p, msg) { if (p.conn) safeSend(p.conn, msg); }
     function broadcast(msg) { for (const p of H.players.values()) send(p, msg); }
     const connected = () => [...H.players.values()].filter(p => p.connected);
     const sorted = () => [...H.players.values()].sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
@@ -1050,7 +1066,7 @@
     function onJoin(conn, m) {
       const name = String(m.name || "").replace(/\s+/g, " ").trim().slice(0, 14);
       const cid = String(m.cid || "").slice(0, 40);
-      if (!cid || name.length < 2) return conn.send({ t: "error", code: "name", msg: "Nama tidak sah." });
+      if (!cid || name.length < 2) return safeSend(conn, { t: "error", code: "name", msg: "Nama tidak sah." });
       let p = H.players.get(cid);
       let rejoin = !!p, oldCid = cid;
       if (!p) {
@@ -1065,8 +1081,8 @@
       }
       if (!p) {
         const clash = [...H.players.values()].find(x => x.name.toLowerCase() === name.toLowerCase());
-        if (clash) return conn.send({ t: "error", code: "name", msg: "Nama ini sudah digunakan. Cuba nama lain." });
-        if (H.phase === "end") return conn.send({ t: "error", code: "closed", msg: "Permainan sudah tamat. Tunggu permainan baharu." });
+        if (clash) return safeSend(conn, { t: "error", code: "name", msg: "Nama ini sudah digunakan. Cuba nama lain." });
+        if (H.phase === "end") return safeSend(conn, { t: "error", code: "closed", msg: "Permainan sudah tamat. Tunggu permainan baharu." });
         p = { cid, name, avatar: ((Number(m.avatar) || 0) % AVATARS.length + AVATARS.length) % AVATARS.length, score: 0, streak: 0, correct: 0, last: 0, connected: true, conn };
         H.players.set(cid, p);
       } else {
@@ -1441,7 +1457,7 @@
   //                   TELEFON SEBAGAI KAMERA Q-CARD
   // ======================================================================
   const Cam = (() => {
-    const C = { peer: null, conn: null, pin: null, state: null, names: [], scanner: null, sent: new Map(), retry: 0, retryT: null, on: false, seen: 0, wake: null, key: "" };
+    const C = { peer: null, conn: null, pin: null, state: null, names: [], scanner: null, sent: new Map(), retry: 0, retryT: null, on: false, seen: 0, wake: null, key: "", got: false };
     function setStatus(txt, ok) { $("#cc-status").textContent = txt; $("#cc-dot").classList.toggle("on", !!ok); }
     function start(pin) {
       C.pin = pin; C.on = true; C.retry = 0;
@@ -1474,7 +1490,7 @@
       peer.on("open", () => {
         const conn = peer.connect(PREFIX + "cam-" + C.pin, { reliable: true });
         C.conn = conn;
-        conn.on("open", () => { C.retry = 0; C.seen = Date.now(); setStatus("Disambung ke skrin guru", true); conn.send({ t: "hello" }); });
+        conn.on("open", () => { C.retry = 0; C.seen = Date.now(); C.got = false; setStatus("Disambung ke skrin guru", true); send({ t: "hello" }); });
         conn.on("data", onData);
         conn.on("close", () => { if (conn === C.conn) retry(); });
         conn.on("error", () => { if (conn === C.conn) retry(); });
@@ -1494,6 +1510,7 @@
     function send(m) { try { if (C.conn && C.conn.open) C.conn.send(m); } catch {} }
     function onData(m) {
       C.seen = Date.now();
+      C.got = true;
       if (m.t === "roster") C.names = Array.isArray(m.names) ? m.names : [];
       else if (m.t === "state") {
         if (m.key !== C.key) { C.key = m.key; C.sent.clear(); }
@@ -1538,7 +1555,7 @@
     // degupan: jika skrin guru senyap terlalu lama, sambung semula
     setInterval(() => {
       if (!C.on || !C.conn) return;
-      send({ t: "ping" });
+      send({ t: C.got ? "ping" : "hello" });
       if (C.conn.open && Date.now() - C.seen > 7000) retry();
     }, 2000);
     return { start };
