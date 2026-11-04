@@ -11,11 +11,11 @@ Soalan diambil daripada *Kuiz Slot 2*. **Semua soalan hanya ada 2 pilihan: A ata
 
 Ada dua cara menjawab (pilih di skrin tetapan admin):
 
-| | 📄 **Kad kertas** (lalai) | 📱 **Peranti** |
-|---|---|---|
-| Murid perlukan | Kad A dan B (cetak dari `kad.html`) | Telefon / tablet |
-| Cara jawab | Angkat kad bila guru kata "Angkat!" | Tekan jawapan pada peranti |
-| Markah | Guru tandakan kumpulan yang betul (pilihan) | Automatik ikut kelajuan |
+| | 📄 **Kad kertas** (lalai) | 📷 **Q-Card** | 📱 **Peranti** |
+|---|---|---|---|
+| Murid perlukan | Kad A dan B (`kad.html`) | Q-Card bernombor (`qcard.html`) | Telefon / tablet |
+| Cara jawab | Angkat kad | Pegang kad dengan huruf jawapan di atas | Tekan jawapan pada peranti |
+| Markah | Guru tandakan kumpulan yang betul (pilihan) | Automatik: kamera guru imbas kad | Automatik ikut kelajuan |
 
 ## Cara main: Mod Kad Kertas 📄
 
@@ -28,6 +28,21 @@ Ada dua cara menjawab (pilih di skrin tetapan admin):
    - Guru tekan **Dedah jawapan 👀**, kemudian tandakan kumpulan yang betul (ada butang **✔ Semua betul**).
    - Papan markah (100 mata setiap jawapan betul) → soalan seterusnya.
 5. Di akhir, podium 3 kumpulan terbaik (atau skrin "Tamat!" jika tiada kumpulan).
+
+## Cara main: Mod Q-Card 📷
+
+Seperti Plickers / Q-card Quizizz: setiap murid ada kad bercetak sendiri, dan kamera guru membaca jawapan semua murid serentak.
+
+1. **Admin → 📷 Q-Card**. Taip senarai nama murid (satu nama setiap baris, maksimum 60). Baris 1 = kad nombor 1, baris 2 = kad nombor 2, dan seterusnya. Butang **🔢 Guna nombor sahaja** mengisi Murid 1–30.
+2. **🖨️ Cetak Q-Card**: setiap kad ada nombor & nama murid. Cetak semula jika senarai nama diubah.
+3. **Teruskan → Mula ▶**. Setiap soalan:
+   - Masa tamat → **"✋ Angkat kad sekarang!"** → guru tekan **📷 Imbas kad**.
+   - Murid pegang kad dengan huruf jawapan (**A** atau **B**) di **atas**.
+   - Halakan kamera ke kelas. Kotak hijau = kad sudah dibaca; senarai di tepi menunjukkan siapa sudah diimbas.
+   - Tekan **Dedah jawapan 👀**. Jawapan betul dapat 100 mata.
+4. Kamera perlukan **https** (GitHub Pages sudah https) dan kebenaran kamera. Butang 🔄 menukar kamera (depan/belakang).
+
+Tip: guna kertas putih, cahaya yang cukup, dan kad saiz "2 kad sehelai" untuk kelas besar. Kad yang dipegang mengiring tidak dikira.
 
 ## Cara main: Mod Peranti 📱
 
@@ -48,6 +63,16 @@ Kemajuan disimpan secara automatik dalam pelayar guru (kedua-dua mod). Buka semu
 Dalam mod peranti, sistem cuba guna **kod yang sama**, jadi telefon murid akan menyambung semula sendiri (markah dikekalkan). Jika kod berubah, murid masukkan kod baharu dengan **nama yang sama** dan markah lama mereka akan dipulihkan.
 Guru juga boleh mulakan permainan baharu dari mana-mana soalan melalui pilihan **🎯 Mula dari soalan**.
 
+### Hentikan permainan
+
+Semasa permainan, butang **⏹ Hentikan** di atas sebelah kanan membolehkan guru berhenti serta-merta: **🏆 Tamat & tunjuk keputusan** (podium dengan markah setakat ini) atau **🏠 Kembali ke menu**.
+
+## Soalan sendiri ✏️
+
+- **Admin → ✏️ Buat soalan sendiri**: tajuk, ikon dan soalan. Setiap soalan mesti ada **dua jawapan (A dan B)**; tekan **✔ Betul** pada jawapan yang betul. Penerangan jawapan adalah pilihan.
+- Set MISI 2 / MISI 3 boleh **📋 Salin** untuk diubah suai. Set sendiri ada butang **✏️ Sunting**.
+- Soalan disimpan dalam **pelayar ini sahaja**. Guna **⬇ Eksport** untuk simpan fail `.json`, dan **📥 Import fail soalan** untuk memasukkannya di komputer lain atau berkongsi dengan guru lain.
+
 Pintasan guru: **Space/Enter** untuk butang seterusnya (termasuk "Dedah jawapan"). Klik nama pemain di lobi untuk mengeluarkannya.
 
 ## Hidupkan GitHub Pages
@@ -57,7 +82,8 @@ Laman akan tersedia di `https://<nama-pengguna>.github.io/<nama-repo>/`.
 
 ## Nota teknikal
 
-- Mod kad kertas tidak memerlukan internet selepas laman dibuka.
+- Mod kad kertas dan Q-Card tidak memerlukan internet selepas laman dibuka.
+- Pengesanan Q-Card menggunakan [js-aruco](https://github.com/jcmellado/js-aruco) (MIT) dalam pelayar; tiada gambar dihantar ke mana-mana.
 - 100% fail statik (HTML/CSS/JS), tiada pelayan atau akaun diperlukan.
 - Sambungan masa nyata menggunakan [PeerJS](https://peerjs.com/) (WebRTC) melalui pelayan perantara awam percuma PeerJS. Peranti guru menjadi "hos"; jika tab guru tertutup, gunakan **Sambung semula** (lihat di atas).
 - Murid yang termuat semula halaman atau terputus akan disambung semula secara automatik dengan markah dikekalkan.

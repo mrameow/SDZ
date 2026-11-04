@@ -40,6 +40,7 @@
     s.classList.add("active");
     s.scrollTop = 0;
     document.body.classList.remove("res-ok", "res-bad");
+    document.body.classList.toggle("playing", ["h-intro", "h-question", "h-scan", "h-board"].includes(id));
   }
   let toastT;
   function toast(msg, ms = 2600) {
@@ -381,37 +382,43 @@
   // ======================================================================
   const Host = (() => {
     const H = {
-      peer: null, pin: null, setIdx: 0, time: 20, shuffle: false, explain: true,
+      peer: null, pin: null, selId: store.get("sdz-sel", "misi2", localStorage), set: null, time: 20, shuffle: false, explain: true,
       questions: [], players: new Map(), phase: "setup", qIdx: -1, qStart: 0, qEnd: 0,
       answers: new Map(), timer: null, introT: null, lastResults: new Map(),
       order: [], startIdx: 0, resumed: false, played: 0,
       mode: store.get("sdz-mode", "paper", localStorage), // pilihan di skrin tetapan
-      paper: false,   // mod permainan semasa: kad kertas (tanpa peranti murid)
+      paper: false,   // mod permainan semasa tanpa peranti murid (kad kertas atau Q-Card)
+      qcard: false,   // mod Q-Card (imbas kamera)
+      scanner: null,
       flip: [],       // tukar kedudukan A/B bagi setiap soalan
       marks: new Set(), ready: false
     };
     const GROUP_AV = [19, 4, 12, 14, 7, 3, 16, 21, 8, 10, 18, 22];
+    const sets = () => CUSTOM.all();
+    const selSet = () => sets().find(x => x.id === H.selId) || sets()[0];
     const flipQ = (q, f) => f ? { ...q, o: [q.o[1], q.o[0]], a: 1 - q.a } : q;
 
     // --- simpan kemajuan supaya guru boleh sambung semula jika tab tertutup
     const SAVE_KEY = "sdz-host";
     function save(next) {
       store.set(SAVE_KEY, {
-        pin: H.pin, setIdx: H.setIdx, time: H.time, explain: H.explain, order: H.order, next, played: H.played, at: Date.now(),
+        pin: H.pin, set: H.set, qcard: H.qcard, time: H.time, explain: H.explain, order: H.order, next, played: H.played, at: Date.now(),
         paper: H.paper, flip: H.flip,
         players: [...H.players.values()].map(p => ({ cid: p.cid, name: p.name, avatar: p.avatar, score: p.score, streak: p.streak, correct: p.correct }))
       }, localStorage);
     }
     function loadSaved() {
       const sv = store.get(SAVE_KEY, null, localStorage);
-      if (!sv || !QUIZ_SETS[sv.setIdx] || !Array.isArray(sv.order) || Date.now() - sv.at > 12 * 3600e3) return null;
+      if (!sv || !sv.set || !Array.isArray(sv.set.questions) || !Array.isArray(sv.order) || Date.now() - sv.at > 12 * 3600e3) return null;
+      if (sv.order.some(i => !sv.set.questions[i])) return null;
       if (sv.next >= sv.order.length) return null;
       return sv;
     }
     const clearSaved = () => store.del(SAVE_KEY, localStorage);
 
     function refreshSetup() {
-      const set = QUIZ_SETS[H.setIdx];
+      renderSetGrid();
+      const set = selSet();
       const sel = $("#sel-start");
       sel.innerHTML = "";
       set.questions.forEach((q, i) => { const o = el("option", null, `${i + 1}. ${q.tag}`); o.value = i; sel.append(o); });
@@ -419,9 +426,9 @@
       const sv = loadSaved();
       $("#resume-card").hidden = !sv;
       if (sv) {
-        const ss = QUIZ_SETS[sv.setIdx];
+        const ss = sv.set;
         const ago = Math.max(1, Math.round((Date.now() - sv.at) / 60000));
-        $("#resume-text").textContent = `${ss.emoji} ${ss.title} • sambung dari soalan ${sv.next + 1} / ${sv.order.length} • ${sv.paper ? "📄 kad kertas" : "📱 peranti"} • ${sv.players.length} ${sv.paper ? "kumpulan" : "pemain"} • ${ago} minit lalu`;
+        $("#resume-text").textContent = `${ss.emoji} ${ss.title} • sambung dari soalan ${sv.next + 1} / ${sv.order.length} • ${sv.qcard ? "📷 Q-Card" : sv.paper ? "📄 kad kertas" : "📱 peranti"} • ${sv.players.length} ${sv.qcard ? "murid" : sv.paper ? "kumpulan" : "pemain"} • ${ago} minit lalu`;
       }
     }
     $("#opt-shuffle").addEventListener("change", () => { const sel = $("#sel-start"); sel.disabled = $("#opt-shuffle").checked; if (sel.disabled) sel.value = 0; });
@@ -429,17 +436,18 @@
     $("#btn-resume").onclick = () => {
       SFX.click();
       const sv = loadSaved(); if (!sv) return refreshSetup();
-      H.setIdx = sv.setIdx; H.time = sv.time; H.explain = sv.explain; H.order = sv.order;
+      H.set = sv.set; H.time = sv.time;
+      if (sets().some(x => x.id === sv.set.id)) H.selId = sv.set.id; H.explain = sv.explain; H.order = sv.order;
       H.startIdx = sv.next; H.played = sv.played || 0; H.resumed = true;
       H.flip = Array.isArray(sv.flip) ? sv.flip : [];
       if (sv.paper) {
         stopRoom();
-        H.paper = true;
+        H.paper = true; H.qcard = !!sv.qcard;
         for (const sp of sv.players) H.players.set(sp.cid, { ...sp, last: 0, connected: true, conn: null });
         H.phase = "lobby"; showLobby();
         return;
       }
-      if (H.paper) { H.players.clear(); H.paper = false; }
+      if (H.paper) { H.players.clear(); H.paper = false; H.qcard = false; }
       for (const sp of sv.players) {
         const ex = H.players.get(sp.cid);
         if (ex) Object.assign(ex, { score: sp.score, streak: sp.streak, correct: sp.correct });
@@ -450,13 +458,33 @@
     };
 
     // --- skrin tetapan: cara menjawab & kumpulan
-    function applyModeUI(paper) { document.body.classList.toggle("paper", paper); }
+    function applyModeUI(paper, qcard) { document.body.classList.toggle("paper", paper); document.body.classList.toggle("qcard", !!qcard); }
     function setMode(m) {
+      if (!["paper", "device", "qcard"].includes(m)) m = "paper";
       H.mode = m; store.set("sdz-mode", m, localStorage);
       $("#seg-mode").querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.v === m));
-      $("#btn-create").textContent = m === "paper" ? "Teruskan 📄" : "Cipta Bilik 🎉";
-      applyModeUI(m === "paper");
+      $("#btn-create").textContent = m === "paper" ? "Teruskan 📄" : m === "qcard" ? "Teruskan 📷" : "Cipta Bilik 🎉";
+      applyModeUI(m !== "device", m === "qcard");
     }
+
+    // senarai nama murid untuk Q-Card (baris N = kad nombor N)
+    const rosterIn = $("#in-roster");
+    const rosterNames = () => rosterIn.value.split("\n").map(x => x.replace(/\s+/g, " ").trim().slice(0, 16)).filter(Boolean).slice(0, QCARD.MAX);
+    function rosterChanged() {
+      const n = rosterNames();
+      store.set("sdz-roster", n, localStorage);
+      const total = rosterIn.value.split("\n").filter(x => x.trim()).length;
+      $("#roster-count").textContent = n.length ? `${n.length} murid` + (total > QCARD.MAX ? ` (maksimum ${QCARD.MAX})` : "") : "";
+    }
+    rosterIn.value = store.get("sdz-roster", [], localStorage).join("\n");
+    rosterIn.addEventListener("input", rosterChanged);
+    $("#btn-roster-fill").onclick = () => {
+      SFX.click();
+      if (rosterIn.value.trim() && !confirm("Ganti senarai nama sedia ada dengan Murid 1–30?")) return;
+      rosterIn.value = Array.from({ length: 30 }, (_, i) => `Murid ${i + 1}`).join("\n");
+      rosterChanged();
+    };
+    rosterChanged();
     $("#seg-mode").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; SFX.click(); setMode(b.dataset.v); });
 
     let groups = store.get("sdz-groups", ["Kumpulan 1", "Kumpulan 2", "Kumpulan 3", "Kumpulan 4"], localStorage);
@@ -479,13 +507,22 @@
     $("#btn-group-add").onclick = () => { SFX.pop(); groups.push(`Kumpulan ${groups.length + 1}`); saveGroups(); renderGroups(true); };
     renderGroups();
 
+    function startQcard() {
+      const names = rosterNames();
+      if (!names.length) { $("#setup-err").textContent = "Masukkan senarai nama murid untuk Q-Card dahulu."; SFX.wrong(); rosterIn.focus(); return; }
+      stopRoom();
+      H.paper = true; H.qcard = true;
+      names.forEach((name, i) => H.players.set("s" + i, { cid: "s" + i, name, avatar: i % AVATARS.length, score: 0, streak: 0, correct: 0, last: 0, connected: true, conn: null }));
+      H.phase = "lobby";
+      showLobby();
+    }
     function stopRoom() {
       if (H.peer) { broadcast({ t: "wait", msg: "Guru telah menukar permainan. Tengok skrin di hadapan." }); try { H.peer.destroy(); } catch {} }
       H.peer = null; H.pin = null; H.players.clear();
     }
     function startPaper() {
       stopRoom();
-      H.paper = true;
+      H.paper = true; H.qcard = false;
       const seen = new Set();
       groups.map(g => g.replace(/\s+/g, " ").trim()).filter(Boolean).forEach((name, i) => {
         let n = name; let k = 2; while (seen.has(n.toLowerCase())) n = `${name} ${k++}`;
@@ -496,17 +533,43 @@
       showLobby();
     }
 
-    // --- skrin tetapan
+    // --- skrin tetapan: senarai set soalan
     const grid = $("#set-grid");
-    QUIZ_SETS.forEach((s, i) => {
-      const b = el("button", "set-card pop-in" + (i === 0 ? " on" : ""));
-      b.type = "button";
-      b.style.animationDelay = (i * 0.08) + "s";
-      b.append(el("span", "emo", s.emoji));
-      const d = el("div"); d.append(el("b", null, s.title), el("span", null, s.subtitle)); b.append(d);
-      b.onclick = () => { SFX.pop(); H.setIdx = i; grid.querySelectorAll(".set-card").forEach((c, j) => c.classList.toggle("on", j === i)); refreshSetup(); };
-      grid.append(b);
-    });
+    function renderSetGrid() {
+      const cur = selSet();
+      grid.innerHTML = "";
+      sets().forEach((st, i) => {
+        const b = el("div", "set-card" + (st.id === cur.id ? " on" : ""));
+        b.setAttribute("role", "button"); b.tabIndex = 0;
+        b.append(el("span", "emo", st.emoji || "📝"));
+        const d = el("div"); d.append(el("b", null, st.title), el("span", null, st.subtitle || ""));
+        if (st.custom) d.append(el("span", "set-tag", "Soalan sendiri"));
+        b.append(d);
+        const act = el("button", "set-act", st.custom ? "✏️ Sunting" : "📋 Salin");
+        act.type = "button";
+        act.title = st.custom ? "Sunting set soalan ini" : "Salin set ini untuk diubah suai";
+        act.onclick = e => { e.stopPropagation(); SFX.click(); openEditor(st, !st.custom); };
+        b.append(act);
+        const choose = () => { SFX.pop(); H.selId = st.id; store.set("sdz-sel", st.id, localStorage); refreshSetup(); };
+        b.onclick = choose;
+        b.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); choose(); } };
+        grid.append(b);
+      });
+    }
+    $("#btn-new-set").onclick = () => { SFX.click(); openEditor(null); };
+    $("#btn-import-set").onclick = () => { SFX.click(); $("#in-import").click(); };
+    $("#in-import").onchange = async e => {
+      const f = e.target.files[0]; e.target.value = "";
+      if (!f) return;
+      try {
+        const list = CUSTOM.parseImport(await f.text());
+        let last = null;
+        for (const st of list) last = CUSTOM.upsert(st);
+        H.selId = last; store.set("sdz-sel", last, localStorage);
+        refreshSetup(); SFX.correct();
+        toast(`📥 ${list.length} set soalan diimport`);
+      } catch (err) { SFX.wrong(); toast("⚠️ " + err.message, 4000); }
+    };
     $("#seg-time").addEventListener("click", e => {
       const b = e.target.closest("button"); if (!b) return;
       SFX.click(); H.time = Number(b.dataset.v);
@@ -519,22 +582,146 @@
     };
     $("#btn-create").onclick = () => {
       SFX.click();
+      $("#setup-err").textContent = "";
+      const chosen = selSet();
+      if (!chosen || !chosen.questions.length) { $("#setup-err").textContent = "Set soalan ini kosong."; return; }
+      H.set = JSON.parse(JSON.stringify({ id: chosen.id, title: chosen.title, emoji: chosen.emoji, questions: chosen.questions }));
       H.shuffle = $("#opt-shuffle").checked;
       H.explain = $("#opt-explain").checked;
-      const n = QUIZ_SETS[H.setIdx].questions.length;
+      const n = H.set.questions.length;
       H.order = [...Array(n).keys()];
       if (H.shuffle) for (let i = n - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [H.order[i], H.order[j]] = [H.order[j], H.order[i]]; }
       H.startIdx = H.shuffle ? 0 : Number($("#sel-start").value) || 0;
       H.played = 0; H.resumed = false;
-      H.flip = QUIZ_SETS[H.setIdx].questions.map(() => $("#opt-flip").checked && Math.random() < 0.5);
+      H.flip = H.set.questions.map(() => $("#opt-flip").checked && Math.random() < 0.5);
       if (H.mode === "paper") return startPaper();
-      if (H.paper) { H.players.clear(); H.paper = false; }
+      if (H.mode === "qcard") return startQcard();
+      if (H.paper) { H.players.clear(); H.paper = false; H.qcard = false; }
       if (H.peer && !H.peer.destroyed && H.peer.open) { H.phase = "lobby"; showLobby(); broadcast({ t: "wait", msg: "Guru sedang menyediakan permainan baharu… 🎲" }); }
       else createRoom();
     };
     $("#btn-start").onclick = () => { SFX.click(); startGame(); };
     $("#btn-skip").onclick = () => { SFX.click(); H.paper ? paperRaise() : endQuestion(); };
-    $("#btn-show-answer").onclick = () => { SFX.click(); endQuestion(); };
+    $("#btn-show-answer").onclick = () => { SFX.click(); H.qcard ? openScan() : endQuestion(); };
+    $("#btn-scan-reveal").onclick = () => { SFX.click(); endQuestion(); };
+    $("#btn-cam-switch").onclick = () => { SFX.click(); H.scanner?.switchCamera(); };
+
+    // --- hentikan permainan
+    const dlgStop = $("#dlg-stop");
+    $("#btn-stop").onclick = () => { SFX.click(); dlgStop.showModal(); };
+    $("#stop-cancel").onclick = () => { SFX.click(); dlgStop.close(); };
+    $("#stop-results").onclick = () => { SFX.click(); dlgStop.close(); stopGame(true); };
+    $("#stop-menu").onclick = () => { SFX.click(); dlgStop.close(); stopGame(false); };
+    function stopGame(showResults) {
+      clearInterval(H.timer); clearTimeout(H.introT);
+      H.scanner?.pause();
+      SFX.stopMusic();
+      $("#h-question").classList.remove("raising");
+      if (showResults) return podium();
+      H.phase = "setup";
+      clearSaved();
+      H.scanner?.stop();
+      broadcast({ t: "wait", msg: "Guru telah menghentikan permainan. Tengok skrin di hadapan." });
+      setMode(H.mode);
+      refreshSetup();
+      show("h-setup");
+    }
+
+    // --- editor soalan sendiri (A / B sahaja)
+    const ED_EMOJI = ["📝", "🧪", "🔢", "🌏", "📚", "🎨", "🎵", "⚽", "🐾", "💡", "🛡️", "🚀", "🍎", "🕌", "💻", "🌱"];
+    let ed = null, edDirty = false;
+    function openEditor(src, asCopy) {
+      ed = src
+        ? { id: asCopy ? null : src.id, title: asCopy ? `${src.title} (salinan)`.slice(0, 50) : src.title, emoji: src.emoji || "📝",
+            questions: src.questions.map(q => ({ q: q.q, o: [q.o[0], q.o[1]], a: q.a, why: q.why || "" })) }
+        : { id: null, title: "", emoji: "📝", questions: [{ q: "", o: ["", ""], a: 0, why: "" }] };
+      edDirty = !!asCopy;
+      $("#ed-err").textContent = "";
+      $("#ed-title").value = ed.title;
+      $("#ed-emoji").textContent = ed.emoji;
+      $("#ed-delete").style.display = ed.id ? "" : "none";
+      renderEditor();
+      show("h-editor");
+      if (!src) setTimeout(() => $("#ed-title").focus(), 300);
+    }
+    $("#ed-title").oninput = e => { ed.title = e.target.value; edDirty = true; };
+    $("#ed-emoji").onclick = () => { SFX.pop(); ed.emoji = ED_EMOJI[(ED_EMOJI.indexOf(ed.emoji) + 1) % ED_EMOJI.length]; $("#ed-emoji").textContent = ed.emoji; edDirty = true; };
+    function renderEditor(focusIdx) {
+      const list = $("#ed-list"); list.innerHTML = "";
+      ed.questions.forEach((q, i) => {
+        const card = el("div", "ed-q"); card.dataset.i = i;
+        const head = el("div", "ed-q-head");
+        head.append(el("b", null, `Soalan ${i + 1}`));
+        const mk = (txt, title, fn, cls) => { const b = el("button", cls || null, txt); b.type = "button"; b.title = title; b.onclick = () => { SFX.click(); fn(); edDirty = true; }; return b; };
+        if (i > 0) head.append(mk("↑", "Naik", () => { [ed.questions[i - 1], ed.questions[i]] = [ed.questions[i], ed.questions[i - 1]]; renderEditor(); }));
+        if (i < ed.questions.length - 1) head.append(mk("↓", "Turun", () => { [ed.questions[i + 1], ed.questions[i]] = [ed.questions[i], ed.questions[i + 1]]; renderEditor(); }));
+        head.append(mk("⧉", "Salin soalan", () => { ed.questions.splice(i + 1, 0, JSON.parse(JSON.stringify(q))); renderEditor(i + 1); }));
+        head.append(mk("🗑", "Padam soalan", () => {
+          if ((q.q || q.o[0] || q.o[1]) && !confirm(`Padam soalan ${i + 1}?`)) return;
+          ed.questions.splice(i, 1);
+          if (!ed.questions.length) ed.questions.push({ q: "", o: ["", ""], a: 0, why: "" });
+          renderEditor();
+        }, "del"));
+        const ta = el("textarea"); ta.rows = 2; ta.maxLength = 300; ta.placeholder = "Tulis soalan di sini…"; ta.value = q.q;
+        ta.oninput = () => { q.q = ta.value; edDirty = true; card.classList.remove("bad"); };
+        card.append(head, ta);
+        const okBtns = [];
+        [0, 1].forEach(k => {
+          const row = el("div", "ed-opt");
+          const inp = el("input"); inp.maxLength = 160; inp.placeholder = `Jawapan ${LETTERS[k]}`; inp.value = q.o[k];
+          inp.oninput = () => { q.o[k] = inp.value; edDirty = true; card.classList.remove("bad"); };
+          const ok = el("button", "ok", "✔ Betul"); ok.type = "button"; ok.title = `Tandakan ${LETTERS[k]} sebagai jawapan betul`;
+          ok.onclick = () => { SFX.pop(); q.a = k; edDirty = true; okBtns.forEach((b, j) => b.classList.toggle("on", j === k)); };
+          okBtns.push(ok);
+          row.append(el("span", `lt c${k}`, LETTERS[k]), inp, ok);
+          card.append(row);
+        });
+        okBtns.forEach((b, j) => b.classList.toggle("on", j === q.a));
+        const why = el("input", "ed-why"); why.maxLength = 200; why.placeholder = "💡 Penerangan jawapan (pilihan)"; why.value = q.why;
+        why.oninput = () => { q.why = why.value; edDirty = true; };
+        card.append(why);
+        list.append(card);
+        if (focusIdx === i) setTimeout(() => { card.scrollIntoView({ behavior: "smooth", block: "center" }); ta.focus(); }, 50);
+      });
+    }
+    $("#ed-add").onclick = () => {
+      SFX.pop();
+      ed.questions.push({ q: "", o: ["", ""], a: 0, why: "" });
+      edDirty = true;
+      renderEditor(ed.questions.length - 1);
+    };
+    function closeEditor() { setMode(H.mode); refreshSetup(); show("h-setup"); }
+    $("#ed-back").onclick = () => { SFX.click(); if (edDirty && !confirm("Keluar tanpa menyimpan perubahan?")) return; closeEditor(); };
+    $("#ed-save").onclick = () => {
+      document.querySelectorAll(".ed-q.bad").forEach(c => c.classList.remove("bad"));
+      const bad = CUSTOM.validate(ed);
+      if (bad) {
+        SFX.wrong(); $("#ed-err").textContent = bad.msg;
+        if (bad.index != null) { const c = document.querySelector(`.ed-q[data-i="${bad.index}"]`); if (c) { c.classList.add("bad"); c.scrollIntoView({ behavior: "smooth", block: "center" }); } }
+        else if (!String(ed.title).trim()) $("#ed-title").focus();
+        return;
+      }
+      try {
+        const id = CUSTOM.upsert(ed);
+        H.selId = id; store.set("sdz-sel", id, localStorage);
+        edDirty = false; SFX.correct(); toast("💾 Set soalan disimpan");
+        closeEditor();
+      } catch (err) { SFX.wrong(); $("#ed-err").textContent = err.message; }
+    };
+    $("#ed-delete").onclick = () => {
+      if (!ed.id || !confirm(`Padam set "${ed.title}"? Tindakan ini tidak boleh dibatalkan.`)) return;
+      CUSTOM.remove(ed.id);
+      if (H.selId === ed.id) { H.selId = "misi2"; store.set("sdz-sel", H.selId, localStorage); }
+      SFX.click(); toast("🗑️ Set soalan dipadam");
+      closeEditor();
+    };
+    $("#ed-export").onclick = () => {
+      SFX.click();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([CUSTOM.exportJSON(ed)], { type: "application/json" }));
+      a.download = `soalan-${(ed.title || "kuiz").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "kuiz"}.json`;
+      document.body.append(a); a.click(); a.remove();
+    };
     $("#btn-reveal-next").onclick = () => { SFX.click(); afterReveal(); };
     $("#btn-board-next").onclick = () => { SFX.click(); nextQuestion(); };
     $("#btn-new").onclick = () => {
@@ -557,9 +744,9 @@
     // pintasan papan kekunci untuk guru
     document.addEventListener("keydown", e => {
       if (!document.body.classList.contains("is-host")) return;
-      if (e.target.tagName === "INPUT") return;
+      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
       if (e.key === " " || e.key === "Enter") {
-        const btn = document.querySelector(".screen.active #btn-start:not(:disabled), .screen.active.raising #btn-show-answer, .screen.active.revealed #btn-reveal-next, .screen.active #btn-board-next");
+        const btn = document.querySelector(".screen.active #btn-start:not(:disabled), .screen.active.raising #btn-show-answer, .screen.active #btn-scan-reveal, .screen.active.revealed #btn-reveal-next, .screen.active #btn-board-next");
         if (btn) { e.preventDefault(); btn.click(); }
       }
     });
@@ -578,8 +765,9 @@
     function exit() {
       SFX.stopMusic();
       try { H.peer?.destroy(); } catch {}
-      H.peer = null; H.players.clear(); H.ready = false; H.paper = false;
-      document.body.classList.remove("is-host", "paper");
+      H.peer = null; H.players.clear(); H.ready = false; H.paper = false; H.qcard = false;
+      H.scanner?.stop();
+      document.body.classList.remove("is-host", "paper", "qcard");
       show("p-join");
     }
 
@@ -613,12 +801,12 @@
     }
 
     function showLobby() {
-      const set = QUIZ_SETS[H.setIdx];
+      const set = H.set;
       if (!H.order.length || H.order.some(i => !set.questions[i])) H.order = [...set.questions.keys()];
       H.questions = H.order.map(i => flipQ(set.questions[i], H.flip[i]));
       H.ready = true;
-      applyModeUI(H.paper);
-      $("#hl-count-lbl").textContent = H.paper ? "kumpulan" : "pemain";
+      applyModeUI(H.paper, H.qcard);
+      $("#hl-count-lbl").textContent = H.qcard ? "murid" : H.paper ? "kumpulan" : "pemain";
       $("#hl-empty").textContent = H.paper ? "Tiada kumpulan: permainan tanpa markah." : "Menunggu pemain masuk…";
       $("#hl-set").textContent = `${set.emoji} ${set.title} • ${H.questions.length} soalan • ${H.time}s`;
       $("#btn-start").textContent = H.startIdx > 0 ? `Mula dari soalan ${H.startIdx + 1} ▶` : "Mula ▶";
@@ -883,6 +1071,47 @@
       $("#btn-skip").style.display = "none";
       $("#h-question").classList.add("raising");
     }
+    // mod Q-Card: imbas kad murid dengan kamera
+    function openScan() {
+      if (H.phase !== "raise") return;
+      H.phase = "scan";
+      H.answers.clear();
+      const q = H.questions[H.qIdx];
+      $("#hs-num").textContent = `${H.qIdx + 1} / ${H.questions.length}`;
+      $("#hs-q").textContent = q.q;
+      const grid = $("#hs-grid"); grid.innerHTML = "";
+      for (const p of H.players.values()) {
+        const c = el("div", "sc-chip"); c.dataset.cid = p.cid;
+        c.append(el("b", null, Number(p.cid.slice(1)) + 1), el("span", null, p.name));
+        grid.append(c);
+      }
+      $("#hs-count").textContent = "0";
+      $("#hs-total").textContent = H.players.size;
+      show("h-scan");
+      if (!H.scanner) {
+        H.scanner = QCARD.createScanner({
+          video: $("#hs-video"), overlay: $("#hs-overlay"), onRead: onScanRead,
+          label: idx => { const p = H.players.get("s" + idx); return p ? `${idx + 1}. ${p.name}` : `Kad ${idx + 1} (tiada nama)`; },
+          onStatus: m => { $("#hs-msg").textContent = m; }
+        });
+      }
+      $("#btn-cam-switch").style.display = "none";
+      H.scanner.start().then(() => { $("#btn-cam-switch").style.display = H.scanner.canSwitch() ? "" : "none"; });
+    }
+    function onScanRead(idx, ans) {
+      if (H.phase !== "scan") return;
+      const cid = "s" + idx;
+      if (!H.players.has(cid)) return;
+      const prev = H.answers.get(cid);
+      if (!prev) {
+        SFX.pop();
+        const c = document.querySelector(`.sc-chip[data-cid="${cid}"]`);
+        if (c) c.classList.add("done");
+        $("#hs-count").textContent = H.answers.size + 1;
+      }
+      if (!prev || prev.choice !== ans) H.answers.set(cid, { choice: ans, ms: 0 });
+    }
+
     function renderGroupMarks() {
       const box = $("#hq-groups"); box.innerHTML = "";
       H.marks = new Set();
@@ -910,8 +1139,9 @@
     }
 
     function endQuestion() {
-      if (H.phase !== "question" && H.phase !== "raise") return;
-      const wasPaper = H.paper;
+      if (H.phase !== "question" && H.phase !== "raise" && H.phase !== "scan") return;
+      const wasPaper = H.paper && !H.qcard;
+      if (H.qcard) { H.scanner?.pause(); show("h-question"); $("#hq-groups").innerHTML = ""; }
       H.phase = "reveal";
       clearInterval(H.timer);
       SFX.stopMusic();
@@ -939,7 +1169,7 @@
         if (a && a.choice === q.a) {
           p.streak++; p.correct++;
           const speed = Math.min(1, a.ms / limit);
-          p.last = Math.round(1000 * (1 - speed / 2)) + Math.min((p.streak - 1) * 100, 500);
+          p.last = H.qcard ? 100 : Math.round(1000 * (1 - speed / 2)) + Math.min((p.streak - 1) * 100, 500);
           p.score += p.last;
           p.wasRight = true;
         } else { p.streak = 0; p.last = 0; p.wasRight = false; }
@@ -981,7 +1211,7 @@
     }
     function afterReveal() {
       if (H.phase !== "reveal") return;
-      if (H.paper) {
+      if (H.paper && !H.qcard) {
         // markah kumpulan: 100 mata untuk setiap jawapan betul
         for (const p of H.players.values()) {
           if (H.marks.has(p.cid)) { p.streak++; p.correct++; p.last = 100; p.score += 100; }
@@ -1021,6 +1251,8 @@
 
     function podium() {
       clearInterval(H.timer); clearTimeout(H.introT);
+      H.scanner?.stop();
+      $("#h-question").classList.remove("raising");
       H.phase = "end";
       clearSaved();
       SFX.stopMusic();
@@ -1065,8 +1297,7 @@
       const csv = "﻿" + rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\r\n");
       const a = document.createElement("a");
       a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-      const set = QUIZ_SETS[H.setIdx];
-      a.download = `keputusan-${set.id}-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `keputusan-${H.set.id}-${new Date().toISOString().slice(0, 10)}.csv`;
       document.body.append(a); a.click(); a.remove();
     }
 

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ms">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Q-Card Kamera</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --a: #ff6b6b; --b: #339af0; --ink: #2b2d42; --muted: #7a7f99; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Fredoka", system-ui, sans-serif; color: var(--ink); background: #f3f0ff; }
+    .bar { max-width: 960px; margin: 0 auto; padding: 20px 16px; display: flex; gap: 14px; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; }
+    .bar h1 { margin: 0; font-size: 26px; }
+    .bar p { margin: 4px 0 0; color: var(--muted); max-width: 560px; line-height: 1.4; }
+    .ctl { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .ctl label { display: flex; gap: 6px; align-items: center; font-weight: 600; }
+    .ctl select, .ctl input { font: inherit; padding: 8px 10px; border-radius: 10px; border: 2px solid #e6e3f5; background: #fff; }
+    .ctl input { width: 80px; }
+    button { font: inherit; font-size: 18px; font-weight: 600; border: 0; border-radius: 14px; padding: 12px 22px; background: #7048e8; color: #fff; cursor: pointer; box-shadow: 0 4px 0 #5f3dc4; }
+    .how { max-width: 960px; margin: 0 auto 18px; padding: 0 16px; display: flex; gap: 12px; flex-wrap: wrap; }
+    .how div { background: #fff; border-radius: 14px; padding: 10px 14px; font-weight: 500; box-shadow: 0 4px 14px rgba(80,60,160,.08); }
+    .page { width: 100%; max-width: 760px; margin: 0 auto 24px; background: #fff; aspect-ratio: 210 / 297; display: grid; box-shadow: 0 10px 30px rgba(80,60,160,.12); border-radius: 8px; overflow: hidden; }
+    .page.n2 { grid-template-rows: 1fr 1fr; }
+    .page.n4 { grid-template: 1fr 1fr / 1fr 1fr; }
+    .card { position: relative; border: 1px dashed #ccc; display: flex; flex-direction: column; align-items: center; justify-content: center; container-type: size; }
+    .mk { width: min(64cqw, 64cqh); aspect-ratio: 1; }
+    .mk svg { width: 100%; height: 100%; display: block; }
+    .lt { font-weight: 700; font-size: min(11cqh, 11cqw); line-height: 1; margin: min(3cqh, 3cqw) 0; display: flex; align-items: center; gap: .3em; }
+    .lt.a { color: var(--a); } .lt.b { color: var(--b); transform: rotate(180deg); }
+    .lt small { font-size: .45em; color: var(--muted); font-weight: 600; }
+    .who { position: absolute; left: 4cqw; top: 50%; transform: translateY(-50%); text-align: center; max-width: 16cqw; }
+    .who.r { left: auto; right: 4cqw; transform: translateY(-50%) rotate(180deg); }
+    .who b { display: block; font-size: min(9cqw, 9cqh); line-height: 1; }
+    .who span { display: block; font-size: min(3.2cqw, 3.6cqh); color: var(--muted); font-weight: 600; word-break: break-word; margin-top: 4px; }
+    .page.n4 .who { top: auto; bottom: 3cqh; transform: none; left: 4cqw; max-width: 40cqw; text-align: left; }
+    .page.n4 .who.r { bottom: auto; top: 3cqh; left: auto; right: 4cqw; transform: rotate(180deg); }
+    .page.n4 .who b { font-size: 8cqw; display: inline; } .page.n4 .who span { display: inline; margin-left: 4px; font-size: 4cqw; }
+    @media print {
+      @page { size: A4 portrait; margin: 0; }
+      body { background: #fff; }
+      .bar, .how { display: none; }
+      .page { width: 210mm; height: 297mm; max-width: none; aspect-ratio: auto; margin: 0; box-shadow: none; border-radius: 0; break-after: page; }
+      .card { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <div>
+      <h1>📷 Q-Card untuk imbasan kamera</h1>
+      <p id="info">Setiap murid dapat satu kad. Nombor kad mesti sama dengan senarai nama dalam skrin admin.</p>
+    </div>
+    <div class="ctl">
+      <label id="count-wrap">Bilangan kad <input type="number" id="count" min="1" max="60" value="30"></label>
+      <label>Saiz <select id="layout"><option value="2">2 kad sehelai (disyorkan)</option><option value="4">4 kad sehelai</option></select></label>
+      <button onclick="window.print()">Cetak</button>
+    </div>
+  </div>
+  <div class="how">
+    <div>1️⃣ Cetak (kertas putih, jangan "fit to page" yang kecil sangat)</div>
+    <div>2️⃣ Murid pegang kad dengan huruf jawapan di <b>atas</b></div>
+    <div>3️⃣ Guru imbas kelas dengan kamera</div>
+  </div>
+  <div id="pages"></div>
+  <script src="js/qcard.js"></script>
+  <script>
+    let roster = [];
+    try { roster = JSON.parse(localStorage.getItem("sdz-roster") || "[]").filter(Boolean).slice(0, QCARD.MAX); } catch {}
+    const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+    if (roster.length) {
+      document.getElementById("count-wrap").style.display = "none";
+      document.getElementById("info").textContent = `${roster.length} kad mengikut senarai nama dalam skrin admin. Jika senarai diubah, cetak semula.`;
+    }
+    function card(i) {
+      const name = roster[i] || "";
+      const who = `<b>${i + 1}</b><span>${esc(name)}</span>`;
+      return `<div class="card">
+        <div class="lt a">A</div>
+        <div class="mk">${QCARD.markerSVG(i)}</div>
+        <div class="lt b">B</div>
+        <div class="who">${who}</div><div class="who r">${who}</div>
+      </div>`;
+    }
+    function render() {
+      const n = roster.length || Math.max(1, Math.min(QCARD.MAX, Number(document.getElementById("count").value) || 30));
+      const per = Number(document.getElementById("layout").value);
+      let html = "";
+      for (let p = 0; p < n; p += per) {
+        let cards = "";
+        for (let i = p; i < Math.min(n, p + per); i++) cards += card(i);
+        html += `<div class="page n${per}">${cards}</div>`;
+      }
+      document.getElementById("pages").innerHTML = html;
+    }
+    document.getElementById("layout").onchange = render;
+    document.getElementById("count").oninput = render;
+    render();
+  </script>
+</body>
+</html>
