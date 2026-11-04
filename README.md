@@ -5,7 +5,8 @@ Permainan kuiz masa nyata gaya "kuiz kelas" untuk murid: **guru (admin)** memapa
 Soalan diambil daripada *Kuiz Slot 2*. **Semua soalan hanya ada 2 pilihan: A atau B.**
 - **MISI 2 • Smart Digital Citizen**: 12 soalan (Kad Situasi A–F + Kuiz 1–6, dengan penerangan jawapan)
 - **MISI 3 • Digital Game Challenge**: 20 soalan
-- **Teknologi Ceria • Tahun 1 & 2**: 30 soalan bergambar aras rendah (kenali peranti, ikon & skrin, selamat & beradab, kreatif & kod)
+- **Teknologi Ceria • Tahun 1 & 2**: 30 soalan bergambar aras rendah (kenali peranti, ikon & skrin, guna teknologi dengan selamat)
+- **Kenali Teknologi • Mudah**: 20 soalan bergambar paling mudah
 
 > Soalan asal yang ada 3 pilihan (A/B/C) telah diringkaskan kepada jawapan betul + satu pilihan salah.
 > Kedudukan A/B juga boleh ditukar secara rawak setiap permainan, jadi huruf jawapan mungkin berbeza daripada skema jawapan dalam dokumen asal.
@@ -56,6 +57,12 @@ Lebih mudah bergerak di dalam kelas berbanding laptop:
 4. Telefon juga jadi **alat kawalan jauh**: butang besar di bawah mengikut langkah semasa (Mula, Tamatkan, Imbas kad, Dedah jawapan, Seterusnya).
 
 Perlukan internet pada kedua-dua peranti (untuk sambungan telefon ↔ laptop).
+
+**Sambungan yang tahan lasak:** telefon (dan peranti murid dalam mod peranti) mula-mula cuba sambungan terus.
+Jika gagal dalam beberapa saat (contoh: telefon guna data mudah alih, atau WiFi sekolah yang mengasingkan
+peranti), sambungan beralih secara automatik **melalui pelayan PeerJS**. Status telefon akan menunjukkan
+"Disambung ke skrin guru (melalui pelayan)". Kod kamera telefon kekal sama selepas laman guru dimuat semula,
+jadi telefon menyambung semula sendiri.
 
 Tip: guna kertas putih, cahaya yang cukup, dan kad saiz "2 kad sehelai" untuk kelas besar. Kad yang dipegang mengiring tidak dikira.
 

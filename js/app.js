@@ -39,6 +39,84 @@
     } catch {}
   }
 
+  // ---------------------------------------------------------------- sambungan
+  // Sambungan terus (WebRTC) kadang-kadang gagal di rangkaian sebenar: data mudah alih, WiFi sekolah yang
+  // mengasingkan peranti, dsb. Pelayan relay percuma PeerJS pula tidak stabil. Jadi jika sambungan terus
+  // tidak terbuka dalam beberapa saat, mesej dihantar melalui pelayan isyarat PeerJS yang sama
+  // (laluan yang sudah terbukti boleh dicapai kerana peranti berjaya mendaftar dengannya).
+  const RELAY = "CANDIDATE"; // jenis mesej yang dipanjangkan oleh pelayan PeerJS kepada peranti lain
+  function relayHub(peer) {
+    if (peer._sdzHub) return peer._sdzHub;
+    const hub = { conns: new Map(), onConnection: null };
+    peer._sdzHub = hub;
+    peer.socket.on("message", msg => {
+      const pl = msg && msg.type === RELAY && msg.payload;
+      if (!pl || pl.sdz !== 1 || !msg.src) return;
+      const d = pl.d || {};
+      let c = hub.conns.get(msg.src);
+      if (d.t === "__hi") {                        // pelanggan baharu (di sisi hos)
+        if (!hub.onConnection) return;
+        if (!c || !c.open) { c = relayConn(peer, msg.src, true); hub.onConnection(c); }
+        c._raw({ t: "__ok" });
+        return;
+      }
+      if (!c) return;
+      if (d.t === "__ok") { if (!c.open) { c.open = true; c._emit("open"); } return; }
+      if (d.t === "__bye") { c._end(); return; }
+      if (c.open) c._emit("data", d);
+    });
+    return hub;
+  }
+  function relayConn(peer, remoteId, isOpen) {
+    const hub = relayHub(peer), ls = {};
+    const c = {
+      relay: true, open: !!isOpen, peer: remoteId,
+      on(ev, fn) { (ls[ev] = ls[ev] || []).push(fn); return c; },
+      _emit(ev, a) { (ls[ev] || []).slice().forEach(f => { try { f(a); } catch (e) { setTimeout(() => { throw e; }); } }); },
+      _raw(d) { try { peer.socket.send({ type: RELAY, dst: remoteId, payload: { sdz: 1, d } }); } catch {} },
+      send(d) { if (c.open) c._raw(d); },
+      _end() { const was = c.open; c.open = false; c.closed = true; if (hub.conns.get(remoteId) === c) hub.conns.delete(remoteId); if (was) c._emit("close"); },
+      close() { if (!c.closed) { c._raw({ t: "__bye" }); c._end(); } }
+    };
+    hub.conns.set(remoteId, c);
+    if (!isOpen) {                                 // jabat tangan: ulang "__hi" sehingga hos membalas
+      let n = 0;
+      const tick = () => { if (c.open || c.closed || n++ > 25) return; c._raw({ t: "__hi" }); setTimeout(tick, 800); };
+      tick();
+    }
+    return c;
+  }
+  // Buka pautan ke hos: cuba sambungan terus dahulu, kemudian beralih ke relay secara automatik.
+  function openLink(peer, dst, directMs = 4000) {
+    const ls = {};
+    let cur = null, done = false, closed = false, relay = null;
+    const emit = (ev, a) => (ls[ev] || []).slice().forEach(f => { try { f(a); } catch (e) { setTimeout(() => { throw e; }); } });
+    const L = {
+      open: false, mode: null,
+      on(ev, fn) { (ls[ev] = ls[ev] || []).push(fn); return L; },
+      send(d) { if (cur && cur.open) { try { cur.send(d); } catch {} } },
+      close() { closed = true; L.open = false; clearTimeout(t); try { rtc.close(); } catch {} try { relay && relay.close(); } catch {} }
+    };
+    const adopt = (c, mode) => {
+      if (done || closed) { if (c !== rtc) try { c.close(); } catch {} return; }
+      done = true; cur = c; L.open = true; L.mode = mode;
+      clearTimeout(t);
+      if (mode === "relay") { try { rtc.close(); } catch {} } else if (relay) { try { relay.close(); } catch {} }
+      c.on("data", d => { if (cur === c) emit("data", d); });
+      c.on("close", () => { if (cur === c && !closed) { closed = true; L.open = false; emit("close"); } });
+      emit("open");
+    };
+    const rtc = peer.connect(dst, { reliable: true });
+    rtc.on("open", () => adopt(rtc, "direct"));
+    rtc.on("error", () => {});
+    const t = setTimeout(() => {
+      if (done || closed) return;
+      relay = relayConn(peer, dst, false);
+      relay.on("open", () => adopt(relay, "relay"));
+    }, directMs);
+    return L;
+  }
+
   function peerOptions() {
     // ?peer=host:port membolehkan pelayan PeerJS sendiri (untuk ujian / rangkaian sekolah)
     const custom = params.get("peer");
@@ -197,7 +275,7 @@
       const fail = (msg) => {
         if (P.peer !== peer) return;
         P.connecting = false;
-        if (rejoin && P.joined && !P.ended && P.retry < 40) { scheduleRetry(); return; }
+        if ((rejoin || P.joined) && P.joined && !P.ended && P.retry < 40) { scheduleRetry(); return; }
         overlay(null);
         cleanup();
         if (!P.joined) { $("#pin-err").textContent = msg; shake($("#form-pin")); SFX.wrong(); show("p-join"); }
@@ -205,7 +283,7 @@
       };
       const to = setTimeout(() => { if (!opened) fail("Tidak dapat menyambung. Semak kod & internet kamu."); }, 12000);
       peer.on("open", () => {
-        const conn = peer.connect(PREFIX + pin, { reliable: true });
+        const conn = openLink(peer, PREFIX + pin);
         P.conn = conn;
         conn.on("open", () => {
           opened = true; clearTimeout(to);
@@ -217,9 +295,19 @@
         });
         conn.on("data", onData);
         conn.on("close", () => onClose(conn));
-        conn.on("error", () => onClose(conn));
       });
       peer.on("error", err => {
+        if (P.peer !== peer) return;
+        if (opened) {
+          // sudah bersambung (melalui pelayan) tetapi skrin guru hilang: tunggu & sambung semula, bukan "kod salah"
+          if (err.type === "peer-unavailable" && P.conn) {
+            const c = P.conn; P.conn = null;
+            try { c.close(); } catch {}
+            clearInterval(P.timer);
+            if (P.joined && !P.ended) scheduleRetry();
+          }
+          return;
+        }
         clearTimeout(to);
         if (err.type === "peer-unavailable") fail("Kod tidak dijumpai. Semak semula kod di skrin.");
         else if (!opened) fail("Tidak dapat menyambung. Semak internet kamu.");
@@ -794,15 +882,19 @@
     function openPhoneDialog() { ensureCamRoom(); renderPhone(); dlgPhone.showModal(); }
     function ensureCamRoom(attempt = 0) {
       if (H.camPeer && !H.camPeer.destroyed) return;
-      const pin = String(Math.floor(100000 + Math.random() * 900000));
+      // guna semula kod kamera lama supaya telefon menyambung semula sendiri selepas laman guru dimuat semula
+      const old = store.get("sdz-campin", "", localStorage);
+      const pin = attempt === 0 && /^\d{6}$/.test(old) ? old : String(Math.floor(100000 + Math.random() * 900000));
       const peer = new Peer(PREFIX + "cam-" + pin, peerOptions());
       H.camPeer = peer; H.camPin = null;
-      peer.on("open", () => { H.camPin = pin; renderPhone(); });
-      peer.on("connection", conn => {
+      peer.on("open", () => { H.camPin = pin; store.set("sdz-campin", pin, localStorage); renderPhone(); });
+      const accept = conn => {
         conn.on("data", m => onCamData(conn, m));
         conn.on("close", () => { H.cams.delete(conn); camUI(); });
         conn.on("error", () => {}); // ralat hantar bukan bermaksud terputus; "close" & degupan mengendalikannya
-      });
+      };
+      peer.on("connection", accept);
+      relayHub(peer).onConnection = accept;   // telefon yang menyambung melalui pelayan
       peer.on("disconnected", () => { if (!peer.destroyed) setTimeout(() => { try { peer.reconnect(); } catch {} }, 1000); });
       peer.on("error", err => {
         if (err.type === "unavailable-id" && attempt < 5) { try { peer.destroy(); } catch {} H.camPeer = null; ensureCamRoom(attempt + 1); return; }
@@ -941,11 +1033,13 @@
         H.phase = "lobby";
         showLobby();
       });
-      peer.on("connection", conn => {
+      const accept = conn => {
         conn.on("data", m => onData(conn, m));
         conn.on("close", () => onClose(conn));
         conn.on("error", () => {}); // ralat hantar bukan bermaksud terputus
-      });
+      };
+      peer.on("connection", accept);
+      relayHub(peer).onConnection = accept;   // pemain yang menyambung melalui pelayan
       peer.on("disconnected", () => { if (!peer.destroyed) setTimeout(() => { try { peer.reconnect(); } catch {} }, 1000); });
       peer.on("error", err => {
         if (err.type === "unavailable-id" && attempt < 5) { clearTimeout(to); try { peer.destroy(); } catch {} createRoom(attempt + 1); return; }
@@ -960,6 +1054,7 @@
       H.questions = H.order.map(i => flipQ(set.questions[i], H.flip[i]));
       H.ready = true;
       applyModeUI(H.paper, H.qcard);
+      if (H.qcard && store.get("sdz-campin", "", localStorage)) ensureCamRoom();
       $("#hl-count-lbl").textContent = H.qcard ? "murid" : H.paper ? "kumpulan" : "pemain";
       $("#hl-empty").textContent = H.paper ? "Tiada kumpulan: permainan tanpa markah." : "Menunggu pemain masuk…";
       $("#hl-set").textContent = `${set.emoji} ${set.title} • ${H.questions.length} soalan • ${H.time}s`;
@@ -1485,15 +1580,20 @@
       try { C.conn?.close(); } catch {}
       try { C.peer?.destroy(); } catch {}
       setStatus(C.retry ? `Menyambung semula… (${C.retry})` : "Menyambung ke skrin guru…", false);
+      C.seen = Date.now();
       const peer = new Peer(peerOptions());
       C.peer = peer;
       peer.on("open", () => {
-        const conn = peer.connect(PREFIX + "cam-" + C.pin, { reliable: true });
+        // selepas kegagalan, terus guna laluan pelayan (lebih pantas daripada menunggu sambungan terus)
+        const conn = openLink(peer, PREFIX + "cam-" + C.pin, C.fails ? 0 : 4000);
         C.conn = conn;
-        conn.on("open", () => { C.retry = 0; C.seen = Date.now(); C.got = false; setStatus("Disambung ke skrin guru", true); send({ t: "hello" }); });
+        conn.on("open", () => {
+          C.retry = 0; C.seen = Date.now(); C.got = false;
+          setStatus(conn.mode === "relay" ? "Disambung ke skrin guru (melalui pelayan)" : "Disambung ke skrin guru", true);
+          send({ t: "hello" });
+        });
         conn.on("data", onData);
         conn.on("close", () => { if (conn === C.conn) retry(); });
-        conn.on("error", () => { if (conn === C.conn) retry(); });
       });
       peer.on("error", err => {
         if (peer !== C.peer) return;
@@ -1510,7 +1610,7 @@
     function send(m) { try { if (C.conn && C.conn.open) C.conn.send(m); } catch {} }
     function onData(m) {
       C.seen = Date.now();
-      C.got = true;
+      C.got = true; C.fails = 0;
       if (m.t === "roster") C.names = Array.isArray(m.names) ? m.names : [];
       else if (m.t === "state") {
         if (m.key !== C.key) { C.key = m.key; C.sent.clear(); }
@@ -1556,7 +1656,8 @@
     setInterval(() => {
       if (!C.on || !C.conn) return;
       send({ t: C.got ? "ping" : "hello" });
-      if (C.conn.open && Date.now() - C.seen > 7000) retry();
+      // terbuka tetapi senyap 8s, atau tidak terbuka langsung dalam 15s -> cuba semula (terus guna pelayan)
+      if (Date.now() - C.seen > (C.conn.open ? 8000 : 15000)) { C.fails = (C.fails || 0) + 1; retry(); }
     }, 2000);
     return { start };
   })();
