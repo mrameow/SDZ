@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ms">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kad A / B</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --a: #ff6b6b; --b: #339af0; --ink: #2b2d42; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Fredoka", system-ui, sans-serif; color: var(--ink); background: #f3f0ff; }
+    .bar { max-width: 900px; margin: 0 auto; padding: 20px 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+    .bar h1 { margin: 0; font-size: 26px; }
+    .bar p { margin: 4px 0 0; color: #7a7f99; }
+    .bar label { display: flex; gap: 8px; align-items: center; font-weight: 600; }
+    .bar select { font: inherit; padding: 8px 10px; border-radius: 10px; border: 2px solid #e6e3f5; }
+    button { font: inherit; font-size: 18px; font-weight: 600; border: 0; border-radius: 14px; padding: 12px 22px; background: #7048e8; color: #fff; cursor: pointer; box-shadow: 0 4px 0 #5f3dc4; }
+    .sheet { width: 100%; max-width: 900px; margin: 0 auto 24px; background: #fff; aspect-ratio: 297 / 210; display: grid; border-radius: 12px; box-shadow: 0 10px 30px rgba(80,60,160,.12); overflow: hidden; }
+    .sheet.n2 { grid-template-columns: 1fr 1fr; }
+    .card { display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff; position: relative; border: 3px dashed rgba(255,255,255,.5); }
+    .card.a { background: var(--a); } .card.b { background: var(--b); }
+    .card .l { font-size: min(60vw, 520px); line-height: .9; font-weight: 700; }
+    .sheet.n2 .card .l { font-size: min(30vw, 300px); }
+    .card .s { position: absolute; top: 4%; left: 4%; font-size: min(8vw, 64px); opacity: .8; }
+    .card .s2 { left: auto; right: 4%; top: auto; bottom: 4%; }
+    @media print {
+      @page { size: A4 landscape; margin: 0; }
+      body { background: #fff; }
+      .bar { display: none; }
+      .sheet { max-width: none; width: 297mm; height: 210mm; aspect-ratio: auto; margin: 0; border-radius: 0; box-shadow: none; page-break-after: always; break-after: page; }
+      .card { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .card .l { font-size: 170mm; }
+      .sheet.n2 .card .l { font-size: 120mm; }
+      .card .s { font-size: 18mm; }
+    }
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <div>
+      <h1>🖨️ Kad Jawapan A / B</h1>
+      <p>Cetak dan beri setiap murid / kumpulan satu set kad A dan B.</p>
+    </div>
+    <label>Susun atur
+      <select id="layout">
+        <option value="1">1 kad sehelai (besar)</option>
+        <option value="2">A + B sehelai (lipat dua)</option>
+      </select>
+    </label>
+    <button onclick="window.print()">Cetak</button>
+  </div>
+  <div id="sheets"></div>
+  <script>
+    const card = (k) => `<div class="card ${k.toLowerCase()}"><span class="s">${k === "A" ? "★" : "●"}</span><span class="l">${k}</span><span class="s s2">${k === "A" ? "★" : "●"}</span></div>`;
+    function render() {
+      const n = document.getElementById("layout").value;
+      document.getElementById("sheets").innerHTML = n === "2"
+        ? `<div class="sheet n2">${card("A")}${card("B")}</div>`
+        : `<div class="sheet">${card("A")}</div><div class="sheet">${card("B")}</div>`;
+    }
+    document.getElementById("layout").onchange = render;
+    render();
+  </script>
+</body>
+</html>

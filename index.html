@@ -132,6 +132,21 @@
         <div class="set-grid" id="set-grid"></div>
         <div class="card settings pop-in d2">
           <div class="setting">
+            <span>🎮 Cara menjawab</span>
+            <div class="seg" id="seg-mode">
+              <button type="button" data-v="paper" class="on">📄 Kad kertas</button>
+              <button type="button" data-v="device">📱 Peranti</button>
+            </div>
+          </div>
+          <div class="setting paper-only groups-setting">
+            <span>👥 Kumpulan untuk markah <small class="muted">(kosongkan jika tidak perlu markah)</small></span>
+            <div class="groups-edit" id="groups-edit"></div>
+            <div class="groups-actions">
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-group-add">+ Tambah kumpulan</button>
+              <a class="btn btn-ghost btn-sm" href="kad.html" target="_blank" rel="noopener">🖨️ Cetak kad A / B</a>
+            </div>
+          </div>
+          <div class="setting">
             <span>⏱️ Masa setiap soalan</span>
             <div class="seg" id="seg-time">
               <button type="button" data-v="10">10s</button>
@@ -149,13 +164,17 @@
             <input type="checkbox" id="opt-shuffle"><i></i>
           </label>
           <label class="setting toggle">
+            <span>🔁 Tukar kedudukan A / B secara rawak</span>
+            <input type="checkbox" id="opt-flip" checked><i></i>
+          </label>
+          <label class="setting toggle">
             <span>💡 Tunjuk penerangan jawapan</span>
             <input type="checkbox" id="opt-explain" checked><i></i>
           </label>
         </div>
         <div class="row-btns">
           <button class="btn btn-ghost" id="btn-setup-back">← Kembali</button>
-          <button class="btn btn-primary btn-xl" id="btn-create">Cipta Bilik 🎉</button>
+          <button class="btn btn-primary btn-xl" id="btn-create">Teruskan 🎉</button>
         </div>
         <p class="err" id="setup-err" role="alert"></p>
       </div>
@@ -163,7 +182,14 @@
 
     <section class="screen" id="h-lobby">
       <div class="lobby-wrap">
-        <div class="lobby-head card">
+        <div class="card paper-head paper-only">
+          <div class="paper-cards"><span class="pcard c0">A</span><span class="pcard c1">B</span></div>
+          <div>
+            <h2>📄 Mod Kad Kertas</h2>
+            <p class="muted big-muted">Setiap murid atau kumpulan pegang kad <b>A</b> dan <b>B</b>.<br>Baca soalan, fikir, dan bila guru kata <b>“Angkat!”</b>, tunjukkan kad jawapan kamu!</p>
+          </div>
+        </div>
+        <div class="lobby-head card device-only">
           <div class="join-info">
             <p class="muted">Buka laman ini &amp; masukkan kod:</p>
             <p class="join-url" id="hl-url">…</p>
@@ -172,14 +198,14 @@
           <div class="qr" id="hl-qr" title="Imbas untuk masuk"></div>
         </div>
         <div class="lobby-bar">
-          <div class="count-pill"><b id="hl-count">0</b> pemain</div>
+          <div class="count-pill"><b id="hl-count">0</b> <span id="hl-count-lbl">pemain</span></div>
           <p class="muted lobby-set" id="hl-set"></p>
           <button class="btn btn-primary btn-xl" id="btn-start" disabled>Mula ▶</button>
         </div>
         <div class="players" id="hl-players">
           <p class="muted waiting-text" id="hl-empty">Menunggu pemain masuk…</p>
         </div>
-        <p class="muted hint">Klik nama pemain untuk mengeluarkannya.</p>
+        <p class="muted hint device-only">Klik nama pemain untuk mengeluarkannya.</p>
       </div>
     </section>
 
@@ -204,10 +230,19 @@
             <svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" class="track"/><circle cx="50" cy="50" r="44" class="prog" id="hq-ring"/></svg>
             <span id="hq-time">20</span>
           </div>
-          <div class="ans-count"><b id="hq-answered">0</b><span>jawapan</span></div>
+          <div class="ans-count device-only"><b id="hq-answered">0</b><span>jawapan</span></div>
+          <div class="paper-hint paper-only">🤔 Fikir dahulu…<br><small>Sediakan kad <b class="ca">A</b> atau <b class="cb">B</b></small></div>
+        </div>
+        <div class="raise-banner" id="hq-raise">
+          <div class="raise-text">✋ Angkat kad sekarang!</div>
+          <button class="btn btn-primary btn-xl" id="btn-show-answer">Dedah jawapan 👀</button>
         </div>
         <div class="h-options" id="hq-options"></div>
         <div class="reveal-row">
+          <div class="groups-mark paper-only" id="hq-groups-wrap">
+            <span class="gm-lbl">Tandakan kumpulan yang betul:</span>
+            <div class="gm-list" id="hq-groups"></div>
+          </div>
           <div class="explain" id="hq-explain"></div>
           <button class="btn btn-primary btn-xl" id="btn-reveal-next">Seterusnya ➜</button>
         </div>

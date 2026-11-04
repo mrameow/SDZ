@@ -384,14 +384,21 @@
       peer: null, pin: null, setIdx: 0, time: 20, shuffle: false, explain: true,
       questions: [], players: new Map(), phase: "setup", qIdx: -1, qStart: 0, qEnd: 0,
       answers: new Map(), timer: null, introT: null, lastResults: new Map(),
-      order: [], startIdx: 0, resumed: false, played: 0
+      order: [], startIdx: 0, resumed: false, played: 0,
+      mode: store.get("sdz-mode", "paper", localStorage), // pilihan di skrin tetapan
+      paper: false,   // mod permainan semasa: kad kertas (tanpa peranti murid)
+      flip: [],       // tukar kedudukan A/B bagi setiap soalan
+      marks: new Set(), ready: false
     };
+    const GROUP_AV = [19, 4, 12, 14, 7, 3, 16, 21, 8, 10, 18, 22];
+    const flipQ = (q, f) => f ? { ...q, o: [q.o[1], q.o[0]], a: 1 - q.a } : q;
 
     // --- simpan kemajuan supaya guru boleh sambung semula jika tab tertutup
     const SAVE_KEY = "sdz-host";
     function save(next) {
       store.set(SAVE_KEY, {
         pin: H.pin, setIdx: H.setIdx, time: H.time, explain: H.explain, order: H.order, next, played: H.played, at: Date.now(),
+        paper: H.paper, flip: H.flip,
         players: [...H.players.values()].map(p => ({ cid: p.cid, name: p.name, avatar: p.avatar, score: p.score, streak: p.streak, correct: p.correct }))
       }, localStorage);
     }
@@ -414,7 +421,7 @@
       if (sv) {
         const ss = QUIZ_SETS[sv.setIdx];
         const ago = Math.max(1, Math.round((Date.now() - sv.at) / 60000));
-        $("#resume-text").textContent = `${ss.emoji} ${ss.title} • sambung dari soalan ${sv.next + 1} / ${sv.order.length} • ${sv.players.length} pemain • ${ago} minit lalu`;
+        $("#resume-text").textContent = `${ss.emoji} ${ss.title} • sambung dari soalan ${sv.next + 1} / ${sv.order.length} • ${sv.paper ? "📄 kad kertas" : "📱 peranti"} • ${sv.players.length} ${sv.paper ? "kumpulan" : "pemain"} • ${ago} minit lalu`;
       }
     }
     $("#opt-shuffle").addEventListener("change", () => { const sel = $("#sel-start"); sel.disabled = $("#opt-shuffle").checked; if (sel.disabled) sel.value = 0; });
@@ -424,6 +431,15 @@
       const sv = loadSaved(); if (!sv) return refreshSetup();
       H.setIdx = sv.setIdx; H.time = sv.time; H.explain = sv.explain; H.order = sv.order;
       H.startIdx = sv.next; H.played = sv.played || 0; H.resumed = true;
+      H.flip = Array.isArray(sv.flip) ? sv.flip : [];
+      if (sv.paper) {
+        stopRoom();
+        H.paper = true;
+        for (const sp of sv.players) H.players.set(sp.cid, { ...sp, last: 0, connected: true, conn: null });
+        H.phase = "lobby"; showLobby();
+        return;
+      }
+      if (H.paper) { H.players.clear(); H.paper = false; }
       for (const sp of sv.players) {
         const ex = H.players.get(sp.cid);
         if (ex) Object.assign(ex, { score: sp.score, streak: sp.streak, correct: sp.correct });
@@ -432,6 +448,53 @@
       if (H.peer && !H.peer.destroyed && H.peer.open) { H.phase = "lobby"; showLobby(); broadcast({ t: "wait", msg: "Permainan akan disambung semula… 🎲" }); }
       else createRoom(0, sv.pin);
     };
+
+    // --- skrin tetapan: cara menjawab & kumpulan
+    function applyModeUI(paper) { document.body.classList.toggle("paper", paper); }
+    function setMode(m) {
+      H.mode = m; store.set("sdz-mode", m, localStorage);
+      $("#seg-mode").querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.v === m));
+      $("#btn-create").textContent = m === "paper" ? "Teruskan 📄" : "Cipta Bilik 🎉";
+      applyModeUI(m === "paper");
+    }
+    $("#seg-mode").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; SFX.click(); setMode(b.dataset.v); });
+
+    let groups = store.get("sdz-groups", ["Kumpulan 1", "Kumpulan 2", "Kumpulan 3", "Kumpulan 4"], localStorage);
+    const saveGroups = () => store.set("sdz-groups", groups, localStorage);
+    function renderGroups(focusLast) {
+      const box = $("#groups-edit"); box.innerHTML = "";
+      groups.forEach((g, i) => {
+        const it = el("div", "g-item");
+        const inp = el("input"); inp.value = g; inp.maxLength = 16; inp.placeholder = `Kumpulan ${i + 1}`;
+        inp.setAttribute("aria-label", `Nama kumpulan ${i + 1}`);
+        inp.oninput = () => { groups[i] = inp.value; saveGroups(); };
+        const del = el("button", null, "×"); del.type = "button"; del.title = "Buang kumpulan";
+        del.onclick = () => { SFX.click(); groups.splice(i, 1); saveGroups(); renderGroups(); };
+        it.append(el("span", "avatar", AVATARS[GROUP_AV[i % GROUP_AV.length]]), inp, del);
+        box.append(it);
+        if (focusLast && i === groups.length - 1) setTimeout(() => { inp.focus(); inp.select(); }, 0);
+      });
+      $("#btn-group-add").disabled = groups.length >= 12;
+    }
+    $("#btn-group-add").onclick = () => { SFX.pop(); groups.push(`Kumpulan ${groups.length + 1}`); saveGroups(); renderGroups(true); };
+    renderGroups();
+
+    function stopRoom() {
+      if (H.peer) { broadcast({ t: "wait", msg: "Guru telah menukar permainan. Tengok skrin di hadapan." }); try { H.peer.destroy(); } catch {} }
+      H.peer = null; H.pin = null; H.players.clear();
+    }
+    function startPaper() {
+      stopRoom();
+      H.paper = true;
+      const seen = new Set();
+      groups.map(g => g.replace(/\s+/g, " ").trim()).filter(Boolean).forEach((name, i) => {
+        let n = name; let k = 2; while (seen.has(n.toLowerCase())) n = `${name} ${k++}`;
+        seen.add(n.toLowerCase());
+        H.players.set("g" + i, { cid: "g" + i, name: n, avatar: GROUP_AV[i % GROUP_AV.length], score: 0, streak: 0, correct: 0, last: 0, connected: true, conn: null });
+      });
+      H.phase = "lobby";
+      showLobby();
+    }
 
     // --- skrin tetapan
     const grid = $("#set-grid");
@@ -451,7 +514,7 @@
     });
     $("#btn-setup-back").onclick = () => {
       SFX.click();
-      if (H.peer && !H.peer.destroyed) { H.phase = "lobby"; showLobby(); }
+      if (H.ready) { H.phase = "lobby"; showLobby(); }
       else exit();
     };
     $("#btn-create").onclick = () => {
@@ -463,17 +526,22 @@
       if (H.shuffle) for (let i = n - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [H.order[i], H.order[j]] = [H.order[j], H.order[i]]; }
       H.startIdx = H.shuffle ? 0 : Number($("#sel-start").value) || 0;
       H.played = 0; H.resumed = false;
+      H.flip = QUIZ_SETS[H.setIdx].questions.map(() => $("#opt-flip").checked && Math.random() < 0.5);
+      if (H.mode === "paper") return startPaper();
+      if (H.paper) { H.players.clear(); H.paper = false; }
       if (H.peer && !H.peer.destroyed && H.peer.open) { H.phase = "lobby"; showLobby(); broadcast({ t: "wait", msg: "Guru sedang menyediakan permainan baharu… 🎲" }); }
       else createRoom();
     };
     $("#btn-start").onclick = () => { SFX.click(); startGame(); };
-    $("#btn-skip").onclick = () => { SFX.click(); endQuestion(); };
+    $("#btn-skip").onclick = () => { SFX.click(); H.paper ? paperRaise() : endQuestion(); };
+    $("#btn-show-answer").onclick = () => { SFX.click(); endQuestion(); };
     $("#btn-reveal-next").onclick = () => { SFX.click(); afterReveal(); };
     $("#btn-board-next").onclick = () => { SFX.click(); nextQuestion(); };
     $("#btn-new").onclick = () => {
       SFX.click();
       H.phase = "setup";
       SFX.stopMusic();
+      setMode(H.mode);
       refreshSetup();
       show("h-setup");
       broadcast({ t: "wait", msg: "Guru sedang menyediakan permainan baharu… 🎲" });
@@ -491,7 +559,7 @@
       if (!document.body.classList.contains("is-host")) return;
       if (e.target.tagName === "INPUT") return;
       if (e.key === " " || e.key === "Enter") {
-        const btn = document.querySelector(".screen.active #btn-start:not(:disabled), .screen.active.revealed #btn-reveal-next, .screen.active #btn-board-next");
+        const btn = document.querySelector(".screen.active #btn-start:not(:disabled), .screen.active.raising #btn-show-answer, .screen.active.revealed #btn-reveal-next, .screen.active #btn-board-next");
         if (btn) { e.preventDefault(); btn.click(); }
       }
     });
@@ -503,14 +571,15 @@
       Player.stop();
       document.body.classList.add("is-host");
       H.phase = "setup";
+      setMode(H.mode);
       refreshSetup();
       show("h-setup");
     }
     function exit() {
       SFX.stopMusic();
       try { H.peer?.destroy(); } catch {}
-      H.peer = null; H.players.clear();
-      document.body.classList.remove("is-host");
+      H.peer = null; H.players.clear(); H.ready = false; H.paper = false;
+      document.body.classList.remove("is-host", "paper");
       show("p-join");
     }
 
@@ -546,7 +615,20 @@
     function showLobby() {
       const set = QUIZ_SETS[H.setIdx];
       if (!H.order.length || H.order.some(i => !set.questions[i])) H.order = [...set.questions.keys()];
-      H.questions = H.order.map(i => set.questions[i]);
+      H.questions = H.order.map(i => flipQ(set.questions[i], H.flip[i]));
+      H.ready = true;
+      applyModeUI(H.paper);
+      $("#hl-count-lbl").textContent = H.paper ? "kumpulan" : "pemain";
+      $("#hl-empty").textContent = H.paper ? "Tiada kumpulan: permainan tanpa markah." : "Menunggu pemain masuk…";
+      $("#hl-set").textContent = `${set.emoji} ${set.title} • ${H.questions.length} soalan • ${H.time}s`;
+      $("#btn-start").textContent = H.startIdx > 0 ? `Mula dari soalan ${H.startIdx + 1} ▶` : "Mula ▶";
+      if (H.paper) {
+        if (!H.resumed) for (const p of H.players.values()) { p.score = 0; p.streak = 0; p.correct = 0; p.last = 0; }
+        renderPlayers();
+        show("h-lobby");
+        SFX.music("lobby");
+        return;
+      }
       const base = location.origin + location.pathname;
       const url = base + "?pin=" + H.pin;
       $("#hl-url").textContent = base.replace(/^https?:\/\//, "").replace(/\/index\.html$/, "/");
@@ -582,6 +664,7 @@
       c.dataset.cid = p.cid;
       if (!animate) c.style.animation = "none";
       c.append(el("span", "avatar", AVATARS[p.avatar] || "🙂"), el("span", null, p.name));
+      if (H.paper) { c.classList.add("static"); c.tabIndex = -1; return c; }
       c.title = "Klik untuk keluarkan " + p.name;
       c.onclick = () => { if (confirm(`Keluarkan ${p.name} daripada permainan?`)) kick(p.cid); };
       return c;
@@ -590,7 +673,7 @@
       const n = [...H.players.values()].filter(p => p.connected).length;
       $("#hl-count").textContent = n;
       $("#hl-empty").style.display = H.players.size ? "none" : "";
-      $("#btn-start").disabled = n === 0;
+      $("#btn-start").disabled = !H.paper && n === 0;
     }
     function kick(cid) {
       const p = H.players.get(cid); if (!p) return;
@@ -700,7 +783,7 @@
 
     // --- aliran permainan
     function startGame() {
-      if (!connected().length) return;
+      if (!H.paper && !connected().length) return;
       if (!H.resumed) { for (const p of H.players.values()) { p.score = 0; p.streak = 0; p.correct = 0; p.last = 0; } H.played = 0; }
       H.resumed = false;
       H.qIdx = H.startIdx - 1;
@@ -731,7 +814,7 @@
       H.phase = "question";
       H.answers.clear();
       const q = H.questions[H.qIdx];
-      const scr = $("#h-question"); scr.classList.remove("revealed");
+      const scr = $("#h-question"); scr.classList.remove("revealed", "raising");
       $("#hq-num").textContent = `${H.qIdx + 1} / ${H.questions.length}`;
       $("#hq-tag").textContent = q.tag;
       const qb = $("#hq-q"); qb.textContent = q.q; qb.classList.remove("pop-in"); void qb.offsetWidth;
@@ -767,7 +850,7 @@
           timerEl.classList.toggle("urgent", s <= 5);
           if (s <= 5 && s > 0) SFX.tickUrgent();
         }
-        if (left <= 0) endQuestion();
+        if (left <= 0) H.paper ? paperRaise() : endQuestion();
       };
       tick();
       H.timer = setInterval(tick, 100);
@@ -789,12 +872,65 @@
       const live = connected();
       if (live.length && live.every(p => H.answers.has(p.cid))) setTimeout(() => { if (H.phase === "question") endQuestion(); }, 600);
     }
-    function endQuestion() {
+    // mod kertas: masa tamat -> murid angkat kad -> guru dedahkan jawapan
+    function paperRaise() {
       if (H.phase !== "question") return;
+      H.phase = "raise";
+      clearInterval(H.timer);
+      SFX.stopMusic();
+      SFX.timeUp();
+      setTimeout(() => SFX.countdown(true), 250);
+      $("#btn-skip").style.display = "none";
+      $("#h-question").classList.add("raising");
+    }
+    function renderGroupMarks() {
+      const box = $("#hq-groups"); box.innerHTML = "";
+      H.marks = new Set();
+      const list = [...H.players.values()];
+      if (!list.length) return;
+      const btns = [];
+      const sync = () => btns.forEach(([b, p]) => b.classList.toggle("on", H.marks.has(p.cid)));
+      list.forEach(p => {
+        const b = el("button", "gm-btn"); b.type = "button";
+        b.append(el("span", "ck", "✔"), el("span", "avatar", AVATARS[p.avatar]), el("span", null, p.name));
+        b.onclick = () => {
+          if (H.marks.has(p.cid)) { H.marks.delete(p.cid); SFX.click(); }
+          else { H.marks.add(p.cid); SFX.pop(); FX.burstAt(b, 10); }
+          sync();
+        };
+        btns.push([b, p]); box.append(b);
+      });
+      const all = el("button", "gm-btn all", "✔ Semua betul"); all.type = "button";
+      all.onclick = () => {
+        const every = list.every(p => H.marks.has(p.cid));
+        H.marks = every ? new Set() : new Set(list.map(p => p.cid));
+        SFX.pop(); sync();
+      };
+      box.append(all);
+    }
+
+    function endQuestion() {
+      if (H.phase !== "question" && H.phase !== "raise") return;
+      const wasPaper = H.paper;
       H.phase = "reveal";
       clearInterval(H.timer);
       SFX.stopMusic();
+      $("#h-question").classList.remove("raising");
       const q = H.questions[H.qIdx];
+      if (wasPaper) {
+        renderGroupMarks();
+        const last = H.qIdx >= H.questions.length - 1;
+        const hasGroups = H.players.size > 0;
+        $("#hq-explain").textContent = H.explain && q.why ? q.why : "";
+        $("#btn-skip").style.display = "none";
+        $("#btn-reveal-next").textContent = hasGroups ? (last ? "Lihat pemenang 🏆" : "Papan markah ➜") : (last ? "Tamat 🎉" : "Soalan seterusnya ➜");
+        const opts = [...document.querySelectorAll("#hq-options .opt")];
+        opts.forEach((o, i) => o.classList.add(i === q.a ? "right" : "wrong"));
+        $("#h-question").classList.add("revealed");
+        SFX.reveal();
+        setTimeout(() => { SFX.correct(); if (opts[q.a]) FX.burstAt(opts[q.a], 40); }, 250);
+        return;
+      }
       const limit = H.time * 1000;
       // markah: 500–1000 bergantung pada kelajuan + bonus berturut-turut
       for (const p of H.players.values()) {
@@ -844,6 +980,20 @@
       }, 350);
     }
     function afterReveal() {
+      if (H.phase !== "reveal") return;
+      if (H.paper) {
+        // markah kumpulan: 100 mata untuk setiap jawapan betul
+        for (const p of H.players.values()) {
+          if (H.marks.has(p.cid)) { p.streak++; p.correct++; p.last = 100; p.score += 100; }
+          else { p.streak = 0; p.last = 0; }
+        }
+        H.played++;
+        save(H.qIdx + 1);
+        if (!H.players.size) {
+          if (H.qIdx >= H.questions.length - 1) return podium();
+          return nextQuestion();
+        }
+      }
       if (H.qIdx >= H.questions.length - 1) return podium();
       H.phase = "board";
       const ol = $("#hb-list"); ol.innerHTML = "";
@@ -877,8 +1027,17 @@
       const list = sorted();
       list.forEach(p => send(p, { t: "end", rank: rankOf(list, p), total: list.length, score: p.score, correct: p.correct, questions: H.played }));
       show("h-podium");
-      $("#hp-title").textContent = "Dan pemenangnya ialah…";
       $("#hp-btns").classList.remove("show");
+      const noScore = H.paper && !list.length;
+      $("#h-podium").classList.toggle("no-score", noScore);
+      if (noScore) {
+        [1, 2, 3].forEach(i => $("#pod" + i).classList.remove("show"));
+        $("#hp-title").textContent = "🎉 Tamat! Syabas semua! 🎉";
+        SFX.fanfare(); FX.confetti(220);
+        setTimeout(() => { if (H.phase === "end") { $("#hp-btns").classList.add("show"); FX.rain(100); } }, 1800);
+        return;
+      }
+      $("#hp-title").textContent = "Dan pemenangnya ialah…";
       [1, 2, 3].forEach(i => {
         const pod = $("#pod" + i); pod.classList.remove("show", "empty");
         const p = list[i - 1];
